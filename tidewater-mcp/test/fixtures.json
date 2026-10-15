@@ -1,0 +1,14 @@
+{
+  "approved": {
+    "id": 1345,
+    "periodStart": "2026-09-01",
+    "status": "Approved",
+    "totalHours": 161.26,
+    "tasks": 5
+  },
+  "previews": [
+    { "month": 9, "year": 2026, "workDays": 22, "holidays": [], "lockedDays": 0, "total": 161.26 },
+    { "month": 5, "year": 2026, "workDays": 17, "holidays": [1, 8, 14, 25], "lockedDays": 0, "total": 124.61 },
+    { "month": 2, "year": 2026, "workDays": 0, "holidays": [], "lockedDays": 20, "total": 0 }
+  ]
+}

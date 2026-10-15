@@ -9,6 +9,8 @@
   "scripts": {
     "start": "node src/server.mjs",
     "cli": "node src/cli.mjs",
+    "test": "node --test test/unit.test.mjs",
+    "test:live": "node --test test/live.test.mjs",
     "explore": "node explore/launch.mjs",
     "inspect": "node explore/inspect.mjs"
   },

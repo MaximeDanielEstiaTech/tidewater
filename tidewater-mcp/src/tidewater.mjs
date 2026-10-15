@@ -145,6 +145,24 @@ export function distribute(workDays, tasks, hoursPerDay, mode) {
   return rows;
 }
 
+// Sorts the weekdays of the month from the grid columns.
+// days: [{ day, readOnly, holiday }]. blockedDays: the days of "BLOCAGE" items. daysOff: a Set of days.
+// Locked days are "BLOCAGE" days and read-only days that are not public holidays.
+export function classifyDays({ days, blockedDays = [] }, year, month, daysOff = new Set()) {
+  const holidays = [];
+  const locked = [];
+  const workDays = [];
+  const blocked = new Set(blockedDays);
+  for (const c of days) {
+    const weekday = new Date(Date.UTC(year, month - 1, c.day)).getUTCDay();
+    if (weekday === 0 || weekday === 6) continue;
+    if (blocked.has(c.day) || (c.readOnly && !c.holiday)) locked.push(c.day);
+    else if (c.holiday) holidays.push(c.day);
+    else if (!daysOff.has(c.day)) workDays.push(c.day);
+  }
+  return { holidays, locked, workDays };
+}
+
 const round2 = (n) => Math.round(n * 100) / 100;
 
 /**
@@ -256,18 +274,7 @@ export async function fillMonth(page, opts) {
     throw new Error(`These tasks are not in the app: ${hints.join("; ")}`);
   }
 
-  const holidays = [];
-  // Days that the app locks: a "BLOCAGE" item, or a read-only day that is not a public holiday.
-  const locked = [];
-  const workDays = [];
-  const blocked = new Set(columns.blockedDays);
-  for (const c of columns.days) {
-    const weekday = new Date(Date.UTC(year, month - 1, c.day)).getUTCDay();
-    if (weekday === 0 || weekday === 6) continue;
-    if (blocked.has(c.day) || (c.readOnly && !c.holiday)) locked.push(c.day);
-    else if (c.holiday || c.readOnly) holidays.push(c.day);
-    else if (!daysOff.has(c.day)) workDays.push(c.day);
-  }
+  const { holidays, locked, workDays } = classifyDays(columns, year, month, daysOff);
   const plan = distribute(workDays, tasks, hoursPerDay, mode);
 
   await uiStep(page, "fill grid", () => page.evaluate((rows) => {

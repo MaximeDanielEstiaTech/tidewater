@@ -86,6 +86,17 @@ node src/cli.mjs submit 1346 --confirm        # submits
 
 In the CLI, `fill` is a preview unless you add `--save`.
 
+## Tests
+
+```
+npm test            # unit tests: no Chrome, less than 1 s
+npm run test:live   # tests on the real app: Chrome and a sign-in, approximately 30 s
+```
+
+- `test/unit.test.mjs`: `parseMonth`, `distribute`, `classifyDays` (holidays, "BLOCAGE" locks, read-only days, `daysOff`) and the input rules of the MCP server.
+- `test/live.test.mjs`: reads, previews (`save: false`) and dry runs (`dryRun: true`) only. These tests never save or submit a timesheet. The last test makes sure that the list of timesheets did not change.
+- `test/fixtures.json`: the expected values for the live tests (the approved timesheet and the preview months). If the data in the app changes, update this file.
+
 ## Exploration scripts
 
 The `explore/` folder has the scripts that were used to examine the app: `launch.mjs`, `inspect.mjs`, `goto.mjs`, `click.mjs`, `eval.mjs`. The output goes to `explore/out/`.
