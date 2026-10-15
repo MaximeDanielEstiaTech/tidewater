@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "tidewater": {
+      "command": "node",
+      "args": ["tidewater-mcp/src/server.mjs"]
+    }
+  }
+}
