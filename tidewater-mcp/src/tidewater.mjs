@@ -194,8 +194,8 @@ const round2 = (n) => Math.round(n * 100) / 100;
 
 /**
  * Creates the timesheet of one month.
- * With save=true (default), the function clicks "Enregistrer". The app saves the timesheet as a draft.
- * With save=false, the function fills the form in the browser and does not save it (preview).
+ * With save=true, the function clicks "Enregistrer". The app saves the timesheet as a draft.
+ * Without save=true, the function fills the form in the browser and does not save it (preview).
  * The function does not submit the timesheet. Use submitTimesheet for that.
  */
 export async function fillMonth(page, opts) {
@@ -350,7 +350,7 @@ export async function fillMonth(page, opts) {
     throw new Error(`The form does not agree with the plan. Nothing was saved. ${JSON.stringify(summary)}`);
   }
 
-  if (opts.save === false) return { saved: false, ...summary };
+  if (opts.save !== true) return { saved: false, ...summary };
   if (workDays.length === 0) {
     throw new Error(`The month has no work days (locked days: ${locked.join(", ") || "none"}). Nothing was saved.`);
   }

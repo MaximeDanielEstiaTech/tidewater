@@ -24,26 +24,26 @@ If Microsoft asks for a sign-in, sign in in the Chrome window. The server waits 
 |---|---|
 | `list_timesheets` | Lists your timesheets: ID, month, total hours, status. |
 | `get_timesheet` | Reads one timesheet: status, total, and the hours and days of each task. |
-| `fill_month` | Makes and saves the timesheet of one month (draft). |
+| `fill_month` | Makes the timesheet of one month: a preview, or a saved draft with `save: true`. |
 | `submit_timesheet` | Submits a draft for approval ("Soumettre", then "Ok"). |
 
 `fill_month` does these steps:
 
 1. It opens "Créer une feuille de temps".
 2. In "Informations générales", it selects "&lt;month&gt; &lt;year&gt;".
-3. In "Détails de la feuille de temps", it gives `hoursPerDay` (7.33 max) to each working day. Working days are Monday to Friday. The tool skips public holidays (the app shows them as read-only columns) and the days in `daysOff`.
+3. In "Détails de la feuille de temps", it gives `hoursPerDay` (7.33 max) to each working day. Working days are Monday to Friday. The tool skips public holidays (the app shows them as read-only columns), locked days ("BLOCAGE") and the days in `daysOff`.
 4. It distributes the hours evenly across the four tasks:
    - `CYCLE INGENIEUR (CI) > 1ère année`
    - `CYCLE INGENIEUR (CI) > 2ème année`
    - `PANDRONE - ETECH/PANDRO > -`
    - `RECHERCHE SUR FONDS PROPRES > -`
-5. It clicks "Enregistrer". The app saves the timesheet as a draft.
+5. Only with `save: true`: it clicks "Enregistrer". The app saves the timesheet as a draft.
 6. It returns a summary. Claude then asks you to confirm that the timesheet is correct, and asks if you want to submit it.
 
 `fill_month` parameters:
 
 - `mode`: `rotate` (default) gives each day fully to one task, in turn, as in the earlier months. The task totals differ by one day at most. `split` divides each day across the four tasks.
-- `save`: `true` (default) saves the timesheet. `false` fills the form but does not save it (preview).
+- `save`: `false` (default) fills the form but does not save it (preview). `true` saves the timesheet as a draft.
 
 `submit_timesheet` does these steps only after you agree:
 

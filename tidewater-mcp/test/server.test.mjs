@@ -121,7 +121,7 @@ describe("contract", () => {
     assert.match(d.list_timesheets, /Use it/);
     assert.match(d.get_timesheet, /list_timesheets/);
     assert.match(d.fill_month, /never submits/);
-    assert.match(d.fill_month, /preview/);
+    assert.match(d.fill_month, /save=false \(default\)/);
     assert.match(d.submit_timesheet, /cannot undo/);
     assert.match(d.submit_timesheet, /explicitly/);
   });
@@ -133,7 +133,7 @@ describe("contract", () => {
     assert.equal(p.hoursPerDay.maximum, 7.33);
     assert.equal(p.hoursPerDay.default, 7.33);
     assert.deepEqual(p.mode.enum, ["rotate", "split"]);
-    assert.equal(p.save.default, true);
+    assert.equal(p.save.default, false);
   });
 });
 
@@ -161,9 +161,18 @@ describe("happy path", () => {
     assert.equal(JSON.parse(text(res)).nextStep, undefined);
   });
 
-  test("fill_month_save_tells_the_model_to_ask_the_user", async () => {
-    const { client } = await connect();
+  test("fill_month_without_save_is_a_preview", async () => {
+    const { client, calls } = await connect();
     const res = await client.callTool({ name: "fill_month", arguments: { month: 11, year: 2026 } });
+    assert.ok(!res.isError);
+    assert.equal(calls[0].args.save, false);
+    assert.equal(JSON.parse(text(res)).saved, false);
+  });
+
+  test("fill_month_save_tells_the_model_to_ask_the_user", async () => {
+    const { client, calls } = await connect();
+    const res = await client.callTool({ name: "fill_month", arguments: { month: 11, year: 2026, save: true } });
+    assert.equal(calls[0].args.save, true);
     assert.match(JSON.parse(text(res)).nextStep, /Ask the user/);
   });
 

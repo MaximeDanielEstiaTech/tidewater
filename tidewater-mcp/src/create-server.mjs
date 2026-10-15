@@ -62,7 +62,8 @@ export function createServer(deps = {}) {
         "Creates a timesheet for one month. It selects '<month> <year>' in 'Informations générales', " +
         "then fills 'Détails de la feuille de temps': each working day (Monday to Friday, not public holidays, not locked days, not daysOff) gets hoursPerDay hours, " +
         `distributed evenly across the tasks. Default tasks: ${DEFAULT_TASKS.join(" | ")}. ` +
-        "With save=true (default) it clicks 'Enregistrer'; the app saves the timesheet as a draft. With save=false it only fills the form (preview). " +
+        "With save=false (default) it only fills the form (preview). Show the preview to the user first. " +
+        "With save=true it clicks 'Enregistrer'; the app saves the timesheet as a draft. " +
         "This tool never submits the timesheet. After a save, show the summary to the user (period, total, hours and days per task, " +
         "skipped holidays, locked days), ask the user to examine the timesheet in Chrome, and ask if they want to submit it. " +
         "Call submit_timesheet only after the user says yes. " +
@@ -70,7 +71,7 @@ export function createServer(deps = {}) {
       inputSchema: {
         month: z.union([z.number().int().min(1).max(12), z.string()]).describe("Month number 1-12, or a French or English month name"),
         year: z.number().int().min(2018).max(2100).describe("Year with four digits, for example 2026"),
-        save: z.boolean().default(true).describe("true = click 'Enregistrer' (draft); false = preview only"),
+        save: z.boolean().default(false).describe("false = preview only (default); true = click 'Enregistrer' (draft)"),
         mode: z
           .enum(["rotate", "split"])
           .default("rotate")
