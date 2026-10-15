@@ -54,7 +54,7 @@ server.registerTool(
       `distributed evenly across the tasks. Default tasks: ${DEFAULT_TASKS.join(" | ")}. ` +
       "With save=true (default) it clicks 'Enregistrer'; the app saves the timesheet as a draft. With save=false it only fills the form (preview). " +
       "This tool never submits the timesheet. After a save, show the summary to the user (period, total, hours and days per task, " +
-      "skipped holidays), ask the user to examine the timesheet in Chrome, and ask if they want to submit it. " +
+      "skipped holidays, locked days),ask the user to examine the timesheet in Chrome, and ask if they want to submit it. " +
       "Call submit_timesheet only after the user says yes. " +
       "Only the current month and earlier months are available. The tool refuses a month that already has a timesheet.",
     inputSchema: {

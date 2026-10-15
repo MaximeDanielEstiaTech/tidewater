@@ -4,6 +4,7 @@
 import fs from "node:fs";
 import puppeteer from "puppeteer-core";
 import { APP_URL, CHROME_PATH, PROFILE_DIR, DEBUG_PORT } from "./config.mjs";
+import { uiStep } from "./ui-errors.mjs";
 
 const SIGN_IN_TIMEOUT_MS = 5 * 60_000;
 
@@ -47,12 +48,12 @@ export async function getAppPage() {
     throw new Error("The timesheet app did not open. Sign in to Microsoft in the Chrome window, then try again.");
   }
   // Wait until the app has loaded the current user.
-  await page.waitForFunction(
+  await uiStep(page, "load current user", () => page.waitForFunction(
     () => {
       const root = window.angular?.element(document.body).injector()?.get("$rootScope");
       return root?.CurrentUser?.Id && root?.SystemSettings;
     },
     { timeout: 60_000, polling: 500 },
-  );
+  ));
   return page;
 }

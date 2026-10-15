@@ -62,6 +62,14 @@ Limits:
 - The app lets you select only the current month and earlier months.
 - The tool does not make a timesheet for a month that already has one.
 
+## App changes
+
+If a step fails because the WorkTimePro app changed (an element, a text or an Angular scope is missing), the error starts with `UI_CHANGED`. The error gives the step name and the URL. The server also saves a screenshot and the page HTML in `explore/out/ui-errors/`.
+
+Other errors (for example "the timesheet does not exist") do not start with `UI_CHANGED`.
+
+For the procedure that Claude follows after a `UI_CHANGED` error (fix, test, GitHub issue with the label `ui-change`), refer to the "UI-change rule" in [CLAUDE.md](../CLAUDE.md).
+
 ## Command line
 
 Run these commands in the `tidewater-mcp` folder:

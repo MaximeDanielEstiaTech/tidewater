@@ -1,6 +1,7 @@
 // Operations on the timesheet app. The functions use the forms and the save logic of the app,
 // so the app does its usual validation and calculation of totals.
 import { LIST_DATA_URL, MAX_HOURS_PER_DAY, DEFAULT_TASKS, MONTHS_FR, MONTHS_EN } from "./config.mjs";
+import { uiStep, uiChanged } from "./ui-errors.mjs";
 
 const CREATE_ROUTE = "#!/timesheets/create/";
 
@@ -21,7 +22,7 @@ export function parseMonth(month) {
 }
 
 export async function listTimesheets(page) {
-  return page.evaluate(async (base) => {
+  return uiStep(page, "list timesheets", () => page.evaluate(async (base) => {
     const root = angular.element(document.body).injector().get("$rootScope");
     const url =
       `${base}/LTimesheets?$select=Id,Period,Year,PeriodStart,TotalHours,Status` +
@@ -38,12 +39,12 @@ export async function listTimesheets(page) {
       totalHours: Number(r.TotalHours),
       status: r.Status,
     }));
-  }, LIST_DATA_URL);
+  }, LIST_DATA_URL));
 }
 
 // Reads one timesheet from the LTimesheets list, with the hours of each task.
 export async function getTimesheet(page, id) {
-  return page.evaluate(
+  return uiStep(page, "read timesheet", () => page.evaluate(
     async (base, id) => {
       const res = await fetch(`${base}/LTimesheets(${Number(id)})`, { headers: { Accept: "application/json" }, credentials: "include" });
       if (res.status === 404) throw new Error(`Timesheet ${id} does not exist.`);
@@ -67,7 +68,7 @@ export async function getTimesheet(page, id) {
     },
     LIST_DATA_URL,
     id,
-  );
+  ));
 }
 
 // The statuses that let the requester submit a timesheet (the app shows "Soumettre" only for them).
@@ -90,7 +91,10 @@ export async function submitTimesheet(page, { id, dryRun = false }) {
       { timeout: 20_000, polling: 300 },
     )
     .then(() => true, () => false);
-  if (!found) throw new Error(`The "Soumettre" button is not on the page of timesheet ${id}.`);
+  // The status permits a submission, so a missing button means that the page changed.
+  if (!found) {
+    throw await uiChanged(page, "find Soumettre", `The "Soumettre" button (ng-click="submitRequest()") is not on the page of timesheet ${id}.`);
+  }
   const label = await page.evaluate(() =>
     [...document.querySelectorAll("button")].find((b) => b.getAttribute("ng-click") === "submitRequest()").innerText.trim(),
   );
@@ -98,9 +102,11 @@ export async function submitTimesheet(page, { id, dryRun = false }) {
   if (dryRun) return { submitted: false, dryRun: true, buttonFound: label, timesheet: before };
 
   // 1. Click "Soumettre". 2. Click "Ok" in the "Are you sure?" dialog.
-  await page.evaluate(() => [...document.querySelectorAll("button")].find((b) => b.getAttribute("ng-click") === "submitRequest()").click());
-  await page.waitForFunction(() => document.querySelector('.modal-dialog button[ng-click="ok()"]'), { timeout: 10_000, polling: 200 });
-  await page.evaluate(() => document.querySelector('.modal-dialog button[ng-click="ok()"]').click());
+  await uiStep(page, "click Soumettre then Ok", async () => {
+    await page.evaluate(() => [...document.querySelectorAll("button")].find((b) => b.getAttribute("ng-click") === "submitRequest()").click());
+    await page.waitForFunction(() => document.querySelector('.modal-dialog button[ng-click="ok()"]'), { timeout: 10_000, polling: 200 });
+    await page.evaluate(() => document.querySelector('.modal-dialog button[ng-click="ok()"]').click());
+  });
 
   // The app shows a warning if the hours are not in the permitted limits. If not, the status changes.
   const deadline = Date.now() + 30_000;
@@ -173,17 +179,17 @@ export async function fillMonth(page, opts) {
     location.hash = "#!/timesheets/my";
     setTimeout(() => (location.hash = route), 300);
   }, CREATE_ROUTE);
-  await page.waitForFunction(
+  await uiStep(page, "open create form", () => page.waitForFunction(
     () => {
       const el = document.querySelector("hot-table");
       const s = el && angular.element(el).scope()?.$parent?.$parent;
       return location.hash.startsWith("#!/timesheets/create") && s?.formData?.Periods?.length && s.saveTimesheet;
     },
     { timeout: 30_000, polling: 300 },
-  );
+  ));
 
   // 2. "Informations générales": select "<month> <year>".
-  const periodText = await page.evaluate((start) => {
+  const periodText = await uiStep(page, "select period", () => page.evaluate((start) => {
     const s = angular.element(document.querySelector("hot-table")).scope().$parent.$parent;
     const p = s.formData.Periods.find((x) => x.PeriodStart === start);
     if (!p) return null;
@@ -192,37 +198,53 @@ export async function fillMonth(page, opts) {
       s.periodOnChange();
     });
     return p.Text;
-  }, periodStart);
+  }, periodStart));
   if (!periodText) {
     throw new Error(`The app does not let you select ${periodStart.slice(0, 7)}. Only the current month and earlier months are available.`);
   }
   // The app gets the public holidays and then makes the day columns again.
   // Wait until the columns are for the selected month and are stable.
   const mm = `/${String(month).padStart(2, "0")}`;
-  await page.waitForFunction((suffix) => {
+  await uiStep(page, "load day columns", () => page.waitForFunction((suffix) => {
     const s = angular.element(document.querySelector("hot-table")).scope().$parent.$parent;
     const title = s.handsonTableColumns?.[1]?.title ?? "";
     return title.includes("1" + suffix);
-  }, { timeout: 15_000, polling: 200 }, mm);
+  }, { timeout: 15_000, polling: 200 }, mm));
   await new Promise((r) => setTimeout(r, 2500));
 
   // 3. "Détails de la feuille de temps": open the tab and fill the grid.
-  await page.evaluate(() => {
+  const tabFound = await page.evaluate(() => {
     const tab = [...document.querySelectorAll("a")].find((a) => a.innerText.trim() === "Détails de la feuille de temps");
     tab?.click();
+    return !!tab;
   });
+  if (!tabFound) throw await uiChanged(page, "open details tab", `The tab "Détails de la feuille de temps" is not on the page.`);
   await new Promise((r) => setTimeout(r, 800));
 
-  const columns = await page.evaluate(() => {
+  const columns = await uiStep(page, "read grid columns", () => page.evaluate(() => {
     const s = angular.element(document.querySelector("hot-table")).scope().$parent.$parent;
     return {
       days: s.handsonTableColumns
         .filter((c) => /^Day\d+$/.test(c.data))
         .map((c) => ({ day: Number(c.data.slice(3)), readOnly: !!c.readOnly, holiday: /publicHoliday/.test(c.className ?? "") })),
+      // The app also uses "public holidays" to lock a period (title "BLOCAGE"). Get the days of these locks.
+      blockedDays: (s.formData.PublicHolidayItems ?? [])
+        .filter((h) => /blocage/i.test(h.Title ?? ""))
+        .flatMap((h) => {
+          const fmt = s.$root.SystemSettings.DateFormat;
+          const start = moment.utc(h.Start, fmt);
+          const end = moment.utc(h.End, fmt);
+          const periodStart = moment.utc(s.formData.Period.PeriodStart);
+          const days = [];
+          for (const d = start.clone(); !d.isAfter(end); d.add(1, "days")) {
+            if (d.isSame(periodStart, "month")) days.push(d.date());
+          }
+          return days;
+        }),
       knownTasks: (s.userDefinedTasks ?? []).map((t) => `${t.Project} > ${t.Task}`),
       timeOff: JSON.parse(JSON.stringify(s.formData.TimeOffItems ?? [])),
     };
-  });
+  }));
 
   const unknown = tasks.filter((t) => !columns.knownTasks.includes(t));
   if (unknown.length) {
@@ -235,16 +257,20 @@ export async function fillMonth(page, opts) {
   }
 
   const holidays = [];
+  // Days that the app locks: a "BLOCAGE" item, or a read-only day that is not a public holiday.
+  const locked = [];
   const workDays = [];
+  const blocked = new Set(columns.blockedDays);
   for (const c of columns.days) {
     const weekday = new Date(Date.UTC(year, month - 1, c.day)).getUTCDay();
     if (weekday === 0 || weekday === 6) continue;
-    if (c.holiday || c.readOnly) holidays.push(c.day);
+    if (blocked.has(c.day) || (c.readOnly && !c.holiday)) locked.push(c.day);
+    else if (c.holiday || c.readOnly) holidays.push(c.day);
     else if (!daysOff.has(c.day)) workDays.push(c.day);
   }
   const plan = distribute(workDays, tasks, hoursPerDay, mode);
 
-  await page.evaluate((rows) => {
+  await uiStep(page, "fill grid", () => page.evaluate((rows) => {
     const s = angular.element(document.querySelector("hot-table")).scope().$parent.$parent;
     const hot = angular.element(document.querySelector("hot-table")).isolateScope().hotInstance;
     // Remove all rows that the form has now (for example from "Copier de la feuille précédente").
@@ -256,10 +282,10 @@ export async function fillMonth(page, opts) {
     });
     hot.setDataAtRowProp(changes);
     s.$applyAsync();
-  }, plan);
+  }, plan));
   await new Promise((r) => setTimeout(r, 1500));
 
-  const check = await page.evaluate(() => {
+  const check = await uiStep(page, "read form totals", () => page.evaluate(() => {
     const s = angular.element(document.querySelector("hot-table")).scope().$parent.$parent;
     const items = s.timesheetItems.filter((i) => i.TaskWithProject);
     return {
@@ -270,7 +296,7 @@ export async function fillMonth(page, opts) {
         days: Object.keys(i).filter((k) => /^Day\d+$/.test(k) && i[k] !== "" && i[k] != null).length,
       })),
     };
-  });
+  }));
 
   const expectedTotal = round2(workDays.length * hoursPerDay);
   const summary = {
@@ -279,6 +305,7 @@ export async function fillMonth(page, opts) {
     hoursPerDay,
     workDays: workDays.length,
     holidaysSkipped: holidays,
+    lockedDays: locked,
     daysOffSkipped: [...daysOff].sort((a, b) => a - b),
     timeOffInApp: columns.timeOff,
     expectedTotal,
@@ -290,13 +317,20 @@ export async function fillMonth(page, opts) {
   }
 
   if (opts.save === false) return { saved: false, ...summary };
+  if (workDays.length === 0) {
+    throw new Error(`The month has no work days (locked days: ${locked.join(", ") || "none"}). Nothing was saved.`);
+  }
 
   // 4. Save. The app saves the timesheet as a draft and opens its details page.
-  await page.evaluate(() => {
+  const saveFound = await page.evaluate(() => {
     const btn = [...document.querySelectorAll("button")].find((b) => b.innerText.trim() === "Enregistrer");
-    btn.click();
+    btn?.click();
+    return !!btn;
   });
-  await page.waitForFunction(() => /#!\/timesheets\/view\/\d+/.test(location.hash), { timeout: 30_000, polling: 300 });
+  if (!saveFound) throw await uiChanged(page, "find Enregistrer", `The "Enregistrer" button is not on the page. Nothing was saved.`);
+  await uiStep(page, "wait for saved timesheet", () =>
+    page.waitForFunction(() => /#!\/timesheets\/view\/\d+/.test(location.hash), { timeout: 30_000, polling: 300 }),
+  );
   const id = await page.evaluate(() => Number(/view\/(\d+)/.exec(location.hash)[1]));
   const stored = await getTimesheet(page, id);
   return { saved: true, id, status: stored.status, storedTotal: stored.totalHours, ...summary };

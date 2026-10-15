@@ -1,0 +1,28 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "mcp__tidewater__.*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node .claude/hooks/ui-change-reminder.mjs",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PostToolUseFailure": [
+      {
+        "matcher": "mcp__tidewater__.*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node .claude/hooks/ui-change-reminder.mjs",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}
