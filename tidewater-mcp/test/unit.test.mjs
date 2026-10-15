@@ -1,12 +1,8 @@
 // Unit tests. They do not need Chrome or the app.
 // Run: npm test
-import { test, describe, before, after } from "node:test";
+import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { fileURLToPath } from "node:url";
-import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
-import { McpError } from "@modelcontextprotocol/sdk/types.js";
-import { parseMonth, distribute, classifyDays } from "../src/tidewater.mjs";
+import { parseMonth, distribute, classifyDays, checkOwner, TimesheetError } from "../src/tidewater.mjs";
 import { DEFAULT_TASKS, MAX_HOURS_PER_DAY } from "../src/config.mjs";
 
 const round2 = (n) => Math.round(n * 100) / 100;
@@ -146,57 +142,27 @@ describe("classifyDays", () => {
   });
 });
 
-// These tests start the MCP server. The server refuses the calls before it opens Chrome.
-describe("MCP server input rules", () => {
-  const serverPath = fileURLToPath(new URL("../src/server.mjs", import.meta.url));
-  let client;
+describe("checkOwner", () => {
+  test("accepts a timesheet of the current user", () => {
+    assert.doesNotThrow(() => checkOwner({ id: 1425, requesterId: 77 }, 77));
+  });
 
-  // Returns the error text of a refused call. The SDK gives an isError result or throws.
-  const refusal = async (name, args) => {
-    let res;
+  test("refuses a timesheet of another user with the code NOT_OWNER", () => {
+    assert.throws(
+      () => checkOwner({ id: 1425, requesterId: 12 }, 77),
+      (err) => err instanceof TimesheetError && err.code === "NOT_OWNER" && /list_timesheets/.test(err.message),
+    );
+  });
+
+  test("refuses a timesheet with no requester", () => {
+    assert.throws(() => checkOwner({ id: 1425, requesterId: null }, 77), (err) => err.code === "NOT_OWNER");
+  });
+
+  test("the error does not give data of the timesheet", () => {
     try {
-      res = await client.callTool({ name, arguments: args });
+      checkOwner({ id: 1425, requesterId: 12, totalHours: 99.5 }, 77);
     } catch (err) {
-      if (!(err instanceof McpError)) throw err;
-      return err.message;
+      assert.doesNotMatch(err.message, /99\.5|\b12\b/);
     }
-    assert.ok(res.isError, `${name} ${JSON.stringify(args)} was not refused: ${res.content?.[0]?.text}`);
-    return res.content[0].text;
-  };
-
-  before(async () => {
-    client = new Client({ name: "unit-test", version: "0.0.0" });
-    await client.connect(new StdioClientTransport({ command: "node", args: [serverPath] }));
-  });
-  after(() => client?.close());
-
-  test("the server has the four tools", async () => {
-    const { tools } = await client.listTools();
-    assert.deepEqual(tools.map((t) => t.name).sort(), ["fill_month", "get_timesheet", "list_timesheets", "submit_timesheet"]);
-  });
-
-  // save=false in each call: if a rule breaks, the call can only make a preview.
-  test("fill_month refuses incorrect parameters", async () => {
-    for (const bad of [
-      { month: 13, year: 2026 },
-      { month: 0, year: 2026 },
-      { month: 10, year: 2017 },
-      { month: 10, year: 2026, hoursPerDay: 8 },
-      { month: 10, year: 2026, hoursPerDay: 0 },
-      { month: 10, year: 2026, daysOff: [32] },
-      { month: 10, year: 2026, mode: "random" },
-      { month: 10 },
-    ]) {
-      await refusal("fill_month", { ...bad, save: false });
-    }
-  });
-
-  test("get_timesheet refuses an incorrect id", async () => {
-    for (const id of [0, -1, 1.5]) await refusal("get_timesheet", { id });
-  });
-
-  test("submit_timesheet refuses to submit without confirm=true", async () => {
-    const text = await refusal("submit_timesheet", { id: 1, confirm: false });
-    assert.match(text, /did not submit/);
   });
 });

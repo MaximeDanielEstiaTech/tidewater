@@ -93,7 +93,9 @@ npm test            # unit tests: no Chrome, less than 1 s
 npm run test:live   # tests on the real app: Chrome and a sign-in, approximately 30 s
 ```
 
-- `test/unit.test.mjs`: `parseMonth`, `distribute`, `classifyDays` (holidays, "BLOCAGE" locks, read-only days, `daysOff`) and the input rules of the MCP server.
+- `test/unit.test.mjs`: `parseMonth`, `distribute`, `classifyDays` (holidays, "BLOCAGE" locks, read-only days, `daysOff`) and `checkOwner`.
+- `test/server.test.mjs`: the tool contract (names, required fields, descriptions, annotations, bounds) and the tool behaviour through an in-memory MCP client. The server gets fake operations from `createServer({ getPage, ops })`, so these tests do not need Chrome.
+- `test/e2e.test.mjs`: starts `src/server.mjs` over stdio and lists the tools.
 - `test/live.test.mjs`: reads, previews (`save: false`) and dry runs (`dryRun: true`) only. These tests never save or submit a timesheet. The last test makes sure that the list of timesheets did not change.
 - `test/fixtures.json`: the expected values for the live tests (the approved timesheet and the preview months). If the data in the app changes, update this file.
 

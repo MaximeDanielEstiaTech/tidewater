@@ -42,17 +42,38 @@ export async function listTimesheets(page) {
   }, LIST_DATA_URL));
 }
 
-// Reads one timesheet from the LTimesheets list, with the hours of each task.
+// An error that the user or the model can correct. code: NOT_FOUND, NOT_OWNER.
+export class TimesheetError extends Error {
+  constructor(code, message) {
+    super(message);
+    this.name = "TimesheetError";
+    this.code = code;
+  }
+}
+
+// Refuses a timesheet that is not of the current user. The message gives no data of the timesheet.
+export function checkOwner(sheet, currentUserId) {
+  if (sheet.requesterId == null || sheet.requesterId !== currentUserId) {
+    throw new TimesheetError(
+      "NOT_OWNER",
+      `Timesheet ${sheet.id} is not one of your timesheets. Use list_timesheets to find your timesheet IDs.`,
+    );
+  }
+}
+
+// Reads one timesheet of the current user from the LTimesheets list, with the hours of each task.
 export async function getTimesheet(page, id) {
-  return uiStep(page, "read timesheet", () => page.evaluate(
+  const sheet = await uiStep(page, "read timesheet", () => page.evaluate(
     async (base, id) => {
       const res = await fetch(`${base}/LTimesheets(${Number(id)})`, { headers: { Accept: "application/json" }, credentials: "include" });
-      if (res.status === 404) throw new Error(`Timesheet ${id} does not exist.`);
+      if (res.status === 404) return null;
       if (!res.ok) throw new Error(`LTimesheets request failed: HTTP ${res.status}`);
       const r = (await res.json()).d;
       const items = JSON.parse(r.TimesheetJSON || "[]").filter((i) => i.TaskWithProject);
       const day = (i) => Object.keys(i).filter((k) => /^Day\d+$/.test(k) && i[k] !== "" && i[k] != null);
       return {
+        currentUserId: angular.element(document.body).injector().get("$rootScope").CurrentUser.Id,
+        requesterId: r.RequesterId ?? null,
         id: r.Id,
         period: r.Period,
         year: Number(r.Year),
@@ -69,6 +90,12 @@ export async function getTimesheet(page, id) {
     LIST_DATA_URL,
     id,
   ));
+  if (!sheet) {
+    throw new TimesheetError("NOT_FOUND", `Timesheet ${id} does not exist. Use list_timesheets to find your timesheet IDs.`);
+  }
+  const { currentUserId, requesterId, ...result } = sheet;
+  checkOwner({ id: sheet.id, requesterId }, currentUserId);
+  return result;
 }
 
 // The statuses that let the requester submit a timesheet (the app shows "Soumettre" only for them).
