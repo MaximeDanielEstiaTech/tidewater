@@ -9,7 +9,7 @@
   "scripts": {
     "start": "node src/server.mjs",
     "cli": "node src/cli.mjs",
-    "test": "node --test test/unit.test.mjs test/server.test.mjs test/e2e.test.mjs",
+    "test": "node --test --test-timeout=20000 test/unit.test.mjs test/server.test.mjs test/e2e.test.mjs",
     "test:live": "node --test --test-concurrency=1 test/browser.test.mjs test/live.test.mjs",
     "explore": "node explore/launch.mjs",
     "inspect": "node explore/inspect.mjs"

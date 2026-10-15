@@ -42,7 +42,7 @@ export async function listTimesheets(page) {
   }, LIST_DATA_URL));
 }
 
-// An error that the user or the model can correct. code: NOT_FOUND, NOT_OWNER.
+// An error that the user or the model can correct. code: NOT_FOUND, NOT_OWNER, BAD_STATUS.
 export class TimesheetError extends Error {
   constructor(code, message) {
     super(message);
@@ -98,8 +98,47 @@ export async function getTimesheet(page, id) {
   return result;
 }
 
-// The statuses that let the requester submit a timesheet (the app shows "Soumettre" only for them).
-const SUBMITTABLE = ["Draft", "Rejected"];
+// The statuses that let the requester submit or delete a timesheet (the app shows "Soumettre" and "Supprimer" only for them).
+const EDITABLE = ["Draft", "Rejected"];
+
+// Refuses a timesheet that the requester cannot change. verb: "submit" or "delete".
+export function checkStatus(sheet, verb) {
+  if (!EDITABLE.includes(sheet.status)) {
+    throw new TimesheetError(
+      "BAD_STATUS",
+      `Timesheet ${sheet.id} has status "${sheet.status}". You can ${verb} only a timesheet with status ${EDITABLE.join(" or ")}.`,
+    );
+  }
+}
+
+// Opens the page of a timesheet and finds the button with this ng-click. Returns the text of the button.
+async function openAndFindButton(page, id, ngClick, name) {
+  await page.evaluate((id) => (location.hash = `#!/timesheets/view/${id}`), id);
+  const found = await page
+    .waitForFunction(
+      (ngClick) => [...document.querySelectorAll("button")].some((b) => b.getAttribute("ng-click") === ngClick && b.offsetParent),
+      { timeout: 20_000, polling: 300 },
+      ngClick,
+    )
+    .then(() => true, () => false);
+  // The status permits the action, so a missing button means that the page changed.
+  if (!found) {
+    throw await uiChanged(page, `find ${name}`, `The "${name}" button (ng-click="${ngClick}") is not on the page of timesheet ${id}.`);
+  }
+  return page.evaluate(
+    (ngClick) => [...document.querySelectorAll("button")].find((b) => b.getAttribute("ng-click") === ngClick).innerText.trim(),
+    ngClick,
+  );
+}
+
+// 1. Clicks the button with this ng-click. 2. Clicks "Ok" in the "Are you sure?" dialog.
+async function clickAndConfirm(page, ngClick, name) {
+  await uiStep(page, `click ${name} then Ok`, async () => {
+    await page.evaluate((ngClick) => [...document.querySelectorAll("button")].find((b) => b.getAttribute("ng-click") === ngClick).click(), ngClick);
+    await page.waitForFunction(() => document.querySelector('.modal-dialog button[ng-click="ok()"]'), { timeout: 10_000, polling: 200 });
+    await page.evaluate(() => document.querySelector('.modal-dialog button[ng-click="ok()"]').click());
+  });
+}
 
 /**
  * Submits a saved timesheet for approval: it clicks "Soumettre", then "Ok" in the confirmation dialog.
@@ -108,35 +147,13 @@ const SUBMITTABLE = ["Draft", "Rejected"];
 export async function submitTimesheet(page, { id, dryRun = false, signal }) {
   signal?.throwIfAborted();
   const before = await getTimesheet(page, id);
-  if (!SUBMITTABLE.includes(before.status)) {
-    throw new Error(`Timesheet ${id} has status "${before.status}". You can submit only a timesheet with status ${SUBMITTABLE.join(" or ")}.`);
-  }
-
-  await page.evaluate((id) => (location.hash = `#!/timesheets/view/${id}`), id);
-  const found = await page
-    .waitForFunction(
-      () => [...document.querySelectorAll("button")].some((b) => b.getAttribute("ng-click") === "submitRequest()" && b.offsetParent),
-      { timeout: 20_000, polling: 300 },
-    )
-    .then(() => true, () => false);
-  // The status permits a submission, so a missing button means that the page changed.
-  if (!found) {
-    throw await uiChanged(page, "find Soumettre", `The "Soumettre" button (ng-click="submitRequest()") is not on the page of timesheet ${id}.`);
-  }
-  const label = await page.evaluate(() =>
-    [...document.querySelectorAll("button")].find((b) => b.getAttribute("ng-click") === "submitRequest()").innerText.trim(),
-  );
+  checkStatus(before, "submit");
+  const label = await openAndFindButton(page, id, "submitRequest()", "Soumettre");
 
   if (dryRun) return { submitted: false, dryRun: true, buttonFound: label, timesheet: before };
   // The last point where a cancellation stops the submission.
   signal?.throwIfAborted();
-
-  // 1. Click "Soumettre". 2. Click "Ok" in the "Are you sure?" dialog.
-  await uiStep(page, "click Soumettre then Ok", async () => {
-    await page.evaluate(() => [...document.querySelectorAll("button")].find((b) => b.getAttribute("ng-click") === "submitRequest()").click());
-    await page.waitForFunction(() => document.querySelector('.modal-dialog button[ng-click="ok()"]'), { timeout: 10_000, polling: 200 });
-    await page.evaluate(() => document.querySelector('.modal-dialog button[ng-click="ok()"]').click());
-  });
+  await clickAndConfirm(page, "submitRequest()", "Soumettre");
 
   // The app shows a warning if the hours are not in the permitted limits. If not, the status changes.
   const deadline = Date.now() + 30_000;
@@ -151,6 +168,36 @@ export async function submitTimesheet(page, { id, dryRun = false, signal }) {
     if (after.status !== before.status) return { submitted: true, timesheet: after };
   }
   throw new Error(`Timesheet ${id} still has status "${before.status}" after 30 s. Examine the page in Chrome.`);
+}
+
+/**
+ * Deletes a saved timesheet (status Draft or Rejected): it clicks "Supprimer", then "Ok" in the confirmation dialog.
+ * With dryRun=true, the function opens the timesheet and finds the button, but does not click it.
+ * The function makes sure that the timesheet is not in the list after the deletion.
+ */
+export async function deleteTimesheet(page, { id, dryRun = false, signal }) {
+  signal?.throwIfAborted();
+  const before = await getTimesheet(page, id);
+  checkStatus(before, "delete");
+  const label = await openAndFindButton(page, id, "removeRequest()", "Supprimer");
+
+  if (dryRun) return { deleted: false, dryRun: true, buttonFound: label, timesheet: before };
+  // The last point where a cancellation stops the deletion.
+  signal?.throwIfAborted();
+  await clickAndConfirm(page, "removeRequest()", "Supprimer");
+
+  const deadline = Date.now() + 30_000;
+  while (Date.now() < deadline) {
+    await new Promise((r) => setTimeout(r, 1000));
+    const warning = await page.evaluate(() => {
+      const el = document.querySelector(".cg-notify-message.alert-warning, .cg-notify-message.alert-danger");
+      return el?.offsetParent ? el.innerText.trim() : null;
+    });
+    if (warning) throw new Error(`The app did not delete timesheet ${id}: ${warning}`);
+    const stillThere = (await listTimesheets(page)).some((t) => t.id === id);
+    if (!stillThere) return { deleted: true, timesheet: before };
+  }
+  throw new Error(`Timesheet ${id} is still in the list after 30 s. Examine the page in Chrome.`);
 }
 
 // Gives the hours of each working day to the tasks.

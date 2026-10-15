@@ -4,9 +4,10 @@
 //   node src/cli.mjs get <id>
 //   node src/cli.mjs fill <month> <year> [--save] [--split] [--allow-duplicate] [--days-off=3,4] [--hours=7.33]
 //   node src/cli.mjs submit <id> [--confirm]
-// "fill" without --save is a preview. "submit" without --confirm is a dry run: it finds the button but does not click it.
+//   node src/cli.mjs delete <id> [--confirm]
+// "fill" without --save is a preview. "submit" and "delete" without --confirm are dry runs: they find the button but do not click it.
 import { getAppPage } from "./browser.mjs";
-import { listTimesheets, getTimesheet, fillMonth, submitTimesheet } from "./tidewater.mjs";
+import { listTimesheets, getTimesheet, fillMonth, submitTimesheet, deleteTimesheet } from "./tidewater.mjs";
 
 const [cmd, ...rest] = process.argv.slice(2);
 const flags = Object.fromEntries(rest.filter((a) => a.startsWith("--")).map((a) => a.slice(2).split("=")));
@@ -30,8 +31,10 @@ if (cmd === "list") {
   });
 } else if (cmd === "submit") {
   out = await submitTimesheet(page, { id: Number(args[0]), dryRun: !("confirm" in flags) });
+} else if (cmd === "delete") {
+  out = await deleteTimesheet(page, { id: Number(args[0]), dryRun: !("confirm" in flags) });
 } else {
-  console.error("Usage: node src/cli.mjs list | get <id> | fill <month> <year> [--save] ... | submit <id> [--confirm]");
+  console.error("Usage: node src/cli.mjs list | get <id> | fill <month> <year> [--save] ... | submit <id> [--confirm] | delete <id> [--confirm]");
   process.exit(1);
 }
 console.log(JSON.stringify(out, null, 2));

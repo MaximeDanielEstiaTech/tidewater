@@ -12,9 +12,13 @@ test("server_starts_over_stdio_lists_tools_and_stops", async () => {
   const serverPath = fileURLToPath(new URL("../src/server.mjs", import.meta.url));
   const client = new Client({ name: "e2e-test", version: "0.0.0" });
   await client.connect(new StdioClientTransport({ command: "node", args: [serverPath] }));
-  const { tools } = await client.listTools();
-  assert.equal(tools.length, 4);
-  await client.close();
+  // Close in all cases. An open server process keeps the test run alive.
+  try {
+    const { tools } = await client.listTools();
+    assert.equal(tools.length, 5);
+  } finally {
+    await client.close();
+  }
 });
 
 // The "MCP tool usage" rule in CLAUDE.md needs these files in each custom MCP server.

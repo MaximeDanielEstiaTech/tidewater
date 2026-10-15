@@ -3,11 +3,11 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { getAppPage } from "./browser.mjs";
-import { listTimesheets, getTimesheet, fillMonth, submitTimesheet } from "./tidewater.mjs";
+import { listTimesheets, getTimesheet, fillMonth, submitTimesheet, deleteTimesheet } from "./tidewater.mjs";
 import { DEFAULT_TASKS, MAX_HOURS_PER_DAY } from "./config.mjs";
-import { timesheetListOutput, timesheetOutput, fillMonthOutput, submitOutput } from "./schemas.mjs";
+import { timesheetListOutput, timesheetOutput, fillMonthOutput, submitOutput, deleteOutput } from "./schemas.mjs";
 
-const REAL_OPS = { listTimesheets, getTimesheet, fillMonth, submitTimesheet };
+const REAL_OPS = { listTimesheets, getTimesheet, fillMonth, submitTimesheet, deleteTimesheet };
 
 const asResult = (value) => ({
   content: [{ type: "text", text: JSON.stringify(value, null, 2) }],
@@ -130,6 +130,32 @@ export function createServer(deps = {}) {
         return asError("The tool did not submit. Ask the user to confirm, then call again with confirm=true.");
       }
       return run(extra.signal, (page) => ops.submitTimesheet(page, { id, dryRun, signal: extra.signal }));
+    },
+  );
+
+  server.registerTool(
+    "delete_timesheet",
+    {
+      title: "Delete a timesheet",
+      description:
+        "Deletes a saved timesheet of the signed-in user (status Draft or Rejected): it clicks 'Supprimer', then 'Ok'. " +
+        "The user cannot undo this. Use it when the user wants to remove a draft, for example to make the month again with fill_month. " +
+        "Do not use it on a submitted or approved timesheet (the tool refuses). " +
+        "First show the timesheet to the user (get_timesheet). Call it only after the user has explicitly said to delete this timesheet, " +
+        "and set confirm=true to show that the user agreed. With dryRun=true, the tool opens the timesheet and finds the button, but does not click it.",
+      inputSchema: {
+        id: z.number().int().positive().describe("ID of the timesheet to delete, from list_timesheets"),
+        confirm: z.boolean().describe("Must be true. Set it only when the user has explicitly agreed to delete this timesheet"),
+        dryRun: z.boolean().default(false).describe("true = find the 'Supprimer' button but do not click it"),
+      },
+      outputSchema: deleteOutput,
+      annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: true },
+    },
+    ({ id, confirm, dryRun }, extra) => {
+      if (!dryRun && confirm !== true) {
+        return asError("The tool did not delete. Ask the user to confirm, then call again with confirm=true.");
+      }
+      return run(extra.signal, (page) => ops.deleteTimesheet(page, { id, dryRun, signal: extra.signal }));
     },
   );
 

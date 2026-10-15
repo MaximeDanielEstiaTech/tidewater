@@ -42,3 +42,10 @@ export const submitOutput = z.object({
   buttonFound: z.string().optional().describe("Only in a dry run: the text of the button"),
   timesheet: timesheetOutput,
 });
+
+export const deleteOutput = z.object({
+  deleted: z.boolean(),
+  dryRun: z.boolean().optional(),
+  buttonFound: z.string().optional().describe("Only in a dry run: the text of the button"),
+  timesheet: timesheetOutput.describe("The timesheet before the deletion"),
+});

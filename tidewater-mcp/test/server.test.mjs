@@ -41,6 +41,9 @@ function fakeOps(overrides = {}) {
     submitTimesheet: record("submitTimesheet", ({ id, dryRun }) =>
       dryRun ? { submitted: false, dryRun: true, buttonFound: "Soumettre", timesheet: { ...SHEET, id } } : { submitted: true, timesheet: { ...SHEET, id } },
     ),
+    deleteTimesheet: record("deleteTimesheet", ({ id, dryRun }) =>
+      dryRun ? { deleted: false, dryRun: true, buttonFound: "Supprimer", timesheet: { ...SHEET, id } } : { deleted: true, timesheet: { ...SHEET, id } },
+    ),
   };
   for (const [name, fn] of Object.entries(overrides)) ops[name] = record(name, fn);
   return { ops, calls };
@@ -85,14 +88,14 @@ async function refused(client, name, args) {
 
 async function assertHealthy(client) {
   const { tools } = await client.listTools();
-  assert.equal(tools.length, 4);
+  assert.equal(tools.length, 5);
 }
 
 describe("contract", () => {
-  test("lists_the_four_tools", async () => {
+  test("lists_the_five_tools", async () => {
     const { client } = await connect();
     const { tools } = await client.listTools();
-    assert.deepEqual(tools.map((t) => t.name).sort(), ["fill_month", "get_timesheet", "list_timesheets", "submit_timesheet"]);
+    assert.deepEqual(tools.map((t) => t.name).sort(), ["delete_timesheet", "fill_month", "get_timesheet", "list_timesheets", "submit_timesheet"]);
   });
 
   test("required_fields_are_correct", async () => {
@@ -104,6 +107,7 @@ describe("contract", () => {
       get_timesheet: ["id"],
       fill_month: ["month", "year"],
       submit_timesheet: ["confirm", "id"],
+      delete_timesheet: ["confirm", "id"],
     });
   });
 
@@ -129,6 +133,9 @@ describe("contract", () => {
     assert.equal(a.submit_timesheet.readOnlyHint, false);
     assert.equal(a.submit_timesheet.destructiveHint, true);
     assert.equal(a.submit_timesheet.idempotentHint, false);
+    assert.equal(a.delete_timesheet.readOnlyHint, false);
+    assert.equal(a.delete_timesheet.destructiveHint, true);
+    assert.equal(a.delete_timesheet.idempotentHint, false);
     for (const t of tools) assert.equal(t.annotations?.openWorldHint, true, t.name);
   });
 
@@ -142,6 +149,9 @@ describe("contract", () => {
     assert.match(d.fill_month, /save=false \(default\)/);
     assert.match(d.submit_timesheet, /cannot undo/);
     assert.match(d.submit_timesheet, /explicitly/);
+    assert.match(d.delete_timesheet, /cannot undo/);
+    assert.match(d.delete_timesheet, /explicitly/);
+    assert.match(d.delete_timesheet, /Draft or Rejected/);
   });
 
   test("every_tool_has_an_output_schema", async () => {
@@ -152,6 +162,13 @@ describe("contract", () => {
     assert.ok(props.get_timesheet.includes("tasks"));
     assert.ok(props.fill_month.includes("saved") && props.fill_month.includes("lockedDays"));
     assert.ok(props.submit_timesheet.includes("submitted"));
+    assert.ok(props.delete_timesheet.includes("deleted"));
+  });
+
+  test("delete_timesheet_dry_run_default_is_false", async () => {
+    const { client } = await connect();
+    const { tools } = await client.listTools();
+    assert.equal(tools.find((t) => t.name === "delete_timesheet").inputSchema.properties.dryRun.default, false);
   });
 
   test("fill_month_bounds_and_defaults", async () => {
@@ -182,6 +199,8 @@ describe("happy path", () => {
       ["fill_month", { month: 11, year: 2026, save: true }],
       ["submit_timesheet", { id: 1425, confirm: false, dryRun: true }],
       ["submit_timesheet", { id: 1425, confirm: true }],
+      ["delete_timesheet", { id: 1425, confirm: false, dryRun: true }],
+      ["delete_timesheet", { id: 1425, confirm: true }],
     ]) {
       const res = await client.callTool({ name, arguments: args });
       assert.ok(!res.isError, `${name}: ${text(res)}`);
@@ -226,6 +245,24 @@ describe("happy path", () => {
     const res = await client.callTool({ name: "submit_timesheet", arguments: { id: 1425, confirm: false, dryRun: true } });
     assert.ok(!res.isError);
     assert.equal(calls[0].args.id, 1425);
+    assert.equal(calls[0].args.dryRun, true);
+  });
+
+  test("delete_timesheet_with_confirm_deletes", async () => {
+    const { client, calls } = await connect();
+    const res = await client.callTool({ name: "delete_timesheet", arguments: { id: 1425, confirm: true } });
+    assert.ok(!res.isError, text(res));
+    assert.equal(res.structuredContent.deleted, true);
+    assert.equal(calls[0].name, "deleteTimesheet");
+    assert.equal(calls[0].args.id, 1425);
+    assert.equal(calls[0].args.dryRun, false);
+  });
+
+  test("delete_timesheet_dry_run_does_not_need_confirm", async () => {
+    const { client, calls } = await connect();
+    const res = await client.callTool({ name: "delete_timesheet", arguments: { id: 1425, confirm: false, dryRun: true } });
+    assert.ok(!res.isError);
+    assert.equal(res.structuredContent.deleted, false);
     assert.equal(calls[0].args.dryRun, true);
   });
 });
@@ -306,6 +343,8 @@ describe("cancellation", () => {
     const { client, calls } = await connect();
     await client.callTool({ name: "fill_month", arguments: { month: 11, year: 2026 } });
     await client.callTool({ name: "submit_timesheet", arguments: { id: 1425, confirm: false, dryRun: true } });
+    await client.callTool({ name: "delete_timesheet", arguments: { id: 1425, confirm: false, dryRun: true } });
+    assert.equal(calls.length, 3);
     for (const c of calls) assert.ok(c.args.signal instanceof AbortSignal, c.name);
   });
 });
@@ -322,6 +361,9 @@ describe("input that the schema refuses", () => {
     ["get_timesheet", { id: 0 }, "id"],
     ["get_timesheet", { id: 1.5 }, "id"],
     ["submit_timesheet", { id: 1425 }, "confirm"],
+    ["delete_timesheet", { id: 1425 }, "confirm"],
+    ["delete_timesheet", { id: -1, confirm: true }, "id"],
+    ["delete_timesheet", { id: "1425", confirm: true }, "id"],
   ]) {
     test(`refuses_${name}_${JSON.stringify(args)}_and_names_${field}`, async () => {
       const { client, calls } = await connect();
@@ -339,6 +381,30 @@ describe("errors", () => {
     const msg = await refused(client, "submit_timesheet", { id: 1425, confirm: false });
     assert.match(msg, /did not submit/);
     assert.equal(calls.length, 0);
+    await assertHealthy(client);
+  });
+
+  test("delete_without_confirm_is_refused_and_does_not_run", async () => {
+    const { client, calls } = await connect();
+    const msg = await refused(client, "delete_timesheet", { id: 1425, confirm: false });
+    assert.match(msg, /did not delete/);
+    assert.equal(calls.length, 0);
+    await assertHealthy(client);
+  });
+
+  test("delete_of_a_submitted_timesheet_gives_the_status_error", async () => {
+    const err = new Error('Timesheet 1346 has status "Approved". You can delete only a timesheet with status Draft or Rejected.');
+    const { client } = await connect({ deleteTimesheet: throwing(err) });
+    const msg = await refused(client, "delete_timesheet", { id: 1346, confirm: true });
+    assert.match(msg, /You can delete only/);
+    await assertHealthy(client);
+  });
+
+  test("delete_of_another_users_timesheet_is_refused", async () => {
+    const err = new TimesheetError("NOT_OWNER", "Timesheet 7 is not one of your timesheets. Use list_timesheets to find your timesheet IDs.");
+    const { client } = await connect({ deleteTimesheet: throwing(err) });
+    const msg = await refused(client, "delete_timesheet", { id: 7, confirm: true });
+    assert.match(msg, /not one of your timesheets/);
     await assertHealthy(client);
   });
 

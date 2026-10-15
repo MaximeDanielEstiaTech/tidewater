@@ -28,6 +28,7 @@ If Microsoft asks for a sign-in, sign in in the Chrome window. The server waits 
 | `get_timesheet` | Reads one timesheet: status, total, and the hours and days of each task. |
 | `fill_month` | Makes the timesheet of one month: a preview, or a saved draft with `save: true`. |
 | `submit_timesheet` | Submits a draft for approval ("Soumettre", then "Ok"). |
+| `delete_timesheet` | Deletes a draft or a rejected timesheet ("Supprimer", then "Ok"). |
 
 `fill_month` does these steps:
 
@@ -59,6 +60,20 @@ If Microsoft asks for a sign-in, sign in in the Chrome window. The server waits 
 - `confirm`: must be `true`. If not, the tool does not submit.
 - `dryRun`: `true` opens the timesheet and finds the "Soumettre" button, but does not click it.
 
+`delete_timesheet` does these steps only after you agree:
+
+1. It makes sure that the timesheet is yours and that the status is "Draft" or "Rejected".
+2. It opens the timesheet and clicks "Supprimer".
+3. It clicks "Ok" in the "Are you sure?" dialog.
+4. It waits until the timesheet is not in the list. If the app shows a warning, the tool returns the warning.
+
+`delete_timesheet` parameters:
+
+- `confirm`: must be `true`. If not, the tool does not delete.
+- `dryRun`: `true` opens the timesheet and finds the "Supprimer" button, but does not click it.
+
+You cannot undo a deletion.
+
 Limits:
 
 - The app lets you select only the current month and earlier months.
@@ -71,7 +86,7 @@ The tools give these errors on purpose. They are not fatal errors (refer to the 
 | Tool | Error |
 |---|---|
 | All | Input that the schema refuses (the error gives the name of the field). |
-| `get_timesheet`, `submit_timesheet` | `Timesheet <id> does not exist.` / `Timesheet <id> is not one of your timesheets.` |
+| `get_timesheet`, `submit_timesheet`, `delete_timesheet` | `Timesheet <id> does not exist.` / `Timesheet <id> is not one of your timesheets.` |
 | `fill_month` | `Unknown month: ...` |
 | `fill_month` | `A timesheet for <YYYY-MM> exists: ...` |
 | `fill_month` | `The app does not let you select <YYYY-MM>. Only the current month and earlier months are available.` |
@@ -80,6 +95,9 @@ The tools give these errors on purpose. They are not fatal errors (refer to the 
 | `submit_timesheet` | `The tool did not submit. Ask the user to confirm, then call again with confirm=true.` |
 | `submit_timesheet` | `Timesheet <id> has status "<status>". You can submit only a timesheet with status Draft or Rejected.` |
 | `submit_timesheet` | `The app did not submit timesheet <id>: <warning of the app>` (for example, the hours are not in the limits of the app) |
+| `delete_timesheet` | `The tool did not delete. Ask the user to confirm, then call again with confirm=true.` |
+| `delete_timesheet` | `Timesheet <id> has status "<status>". You can delete only a timesheet with status Draft or Rejected.` |
+| `delete_timesheet` | `The app did not delete timesheet <id>: <warning of the app>` |
 
 All other errors are fatal, for example `UI_CHANGED`, `The form does not agree with the plan`, `LTimesheets request failed: HTTP <code>`, or a sign-in timeout.
 
@@ -103,6 +121,8 @@ node src/cli.mjs fill octobre 2026 --split --days-off=12,13
 node src/cli.mjs get 1346
 node src/cli.mjs submit 1346                  # dry run: finds the button, does not click
 node src/cli.mjs submit 1346 --confirm        # submits
+node src/cli.mjs delete 1425                  # dry run: finds the button, does not click
+node src/cli.mjs delete 1425 --confirm        # deletes
 ```
 
 In the CLI, `fill` is a preview unless you add `--save`.

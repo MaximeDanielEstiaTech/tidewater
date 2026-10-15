@@ -2,7 +2,17 @@
 // Run: npm test
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { parseMonth, distribute, classifyDays, checkOwner, TimesheetError, fillMonth, submitTimesheet } from "../src/tidewater.mjs";
+import {
+  parseMonth,
+  distribute,
+  classifyDays,
+  checkOwner,
+  checkStatus,
+  TimesheetError,
+  fillMonth,
+  submitTimesheet,
+  deleteTimesheet,
+} from "../src/tidewater.mjs";
 import { DEFAULT_TASKS, MAX_HOURS_PER_DAY } from "../src/config.mjs";
 
 const round2 = (n) => Math.round(n * 100) / 100;
@@ -153,6 +163,34 @@ describe("cancellation", () => {
 
   test("submitTimesheet stops before it uses the page", async () => {
     await assert.rejects(submitTimesheet(untouchable, { id: 1425, signal: aborted() }), { name: "AbortError" });
+  });
+
+  test("deleteTimesheet stops before it uses the page", async () => {
+    await assert.rejects(deleteTimesheet(untouchable, { id: 1425, signal: aborted() }), { name: "AbortError" });
+  });
+});
+
+describe("checkStatus", () => {
+  for (const status of ["Draft", "Rejected"]) {
+    test(`accepts status ${status}`, () => {
+      assert.doesNotThrow(() => checkStatus({ id: 1425, status }, "delete"));
+    });
+  }
+
+  for (const status of ["Submitted", "Approved", "Pending", ""]) {
+    test(`refuses status "${status}" with the code BAD_STATUS`, () => {
+      assert.throws(
+        () => checkStatus({ id: 1425, status }, "delete"),
+        (err) =>
+          err instanceof TimesheetError &&
+          err.code === "BAD_STATUS" &&
+          err.message === `Timesheet 1425 has status "${status}". You can delete only a timesheet with status Draft or Rejected.`,
+      );
+    });
+  }
+
+  test("uses the verb in the message", () => {
+    assert.throws(() => checkStatus({ id: 1, status: "Approved" }, "submit"), /You can submit only/);
   });
 });
 
