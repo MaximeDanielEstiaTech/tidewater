@@ -15,7 +15,9 @@ The `.mcp.json` file in the repository root registers the server for Claude Code
 ## Sign-in
 
 The server uses a persistent Chrome profile in `%LOCALAPPDATA%\tidewater-mcp\chrome-profile`.
-If a Chrome is open on port 9222 (for example from `npm run explore`), the server uses that Chrome. If not, the server starts one.
+If a Chrome is open on port 9222 (for example from `npm run explore`), the server uses that Chrome. If not, the server starts one. This Chrome stays open when the server, the CLI or the tests stop, so you stay signed in.
+
+The server does one tool call at a time, because all tools use the same Chrome page. A call that the client cancels while it waits does not run. The tools return their results as `structuredContent`, with an output schema (`src/schemas.mjs`).
 If Microsoft asks for a sign-in, sign in in the Chrome window. The server waits for 5 minutes at most.
 
 ## Tools
@@ -62,13 +64,32 @@ Limits:
 - The app lets you select only the current month and earlier months.
 - The tool does not make a timesheet for a month that already has one.
 
+## Usual refusals
+
+The tools give these errors on purpose. They are not fatal errors (refer to the "MCP tool usage" rule in [CLAUDE.md](../CLAUDE.md)). Change the input or ask the user.
+
+| Tool | Error |
+|---|---|
+| All | Input that the schema refuses (the error gives the name of the field). |
+| `get_timesheet`, `submit_timesheet` | `Timesheet <id> does not exist.` / `Timesheet <id> is not one of your timesheets.` |
+| `fill_month` | `Unknown month: ...` |
+| `fill_month` | `A timesheet for <YYYY-MM> exists: ...` |
+| `fill_month` | `The app does not let you select <YYYY-MM>. Only the current month and earlier months are available.` |
+| `fill_month` | `These tasks are not in the app: ...` |
+| `fill_month` | `The month has no work days (locked days: ...). Nothing was saved.` |
+| `submit_timesheet` | `The tool did not submit. Ask the user to confirm, then call again with confirm=true.` |
+| `submit_timesheet` | `Timesheet <id> has status "<status>". You can submit only a timesheet with status Draft or Rejected.` |
+| `submit_timesheet` | `The app did not submit timesheet <id>: <warning of the app>` (for example, the hours are not in the limits of the app) |
+
+All other errors are fatal, for example `UI_CHANGED`, `The form does not agree with the plan`, `LTimesheets request failed: HTTP <code>`, or a sign-in timeout.
+
 ## App changes
 
 If a step fails because the WorkTimePro app changed (an element, a text or an Angular scope is missing), the error starts with `UI_CHANGED`. The error gives the step name and the URL. The server also saves a screenshot and the page HTML in `explore/out/ui-errors/`.
 
 Other errors (for example "the timesheet does not exist") do not start with `UI_CHANGED`.
 
-For the procedure that Claude follows after a `UI_CHANGED` error (fix, test, GitHub issue with the label `ui-change`), refer to the "UI-change rule" in [CLAUDE.md](../CLAUDE.md).
+After a fatal error or an unexpected output, Claude writes a log file in `issue/`. Refer to the "MCP tool usage" rule in [CLAUDE.md](../CLAUDE.md).
 
 ## Command line
 
@@ -93,10 +114,11 @@ npm test            # unit tests: no Chrome, less than 1 s
 npm run test:live   # tests on the real app: Chrome and a sign-in, approximately 30 s
 ```
 
-- `test/unit.test.mjs`: `parseMonth`, `distribute`, `classifyDays` (holidays, "BLOCAGE" locks, read-only days, `daysOff`) and `checkOwner`.
-- `test/server.test.mjs`: the tool contract (names, required fields, descriptions, annotations, bounds) and the tool behaviour through an in-memory MCP client. The server gets fake operations from `createServer({ getPage, ops })`, so these tests do not need Chrome.
+- `test/unit.test.mjs`: `parseMonth`, `distribute`, `classifyDays` (holidays, "BLOCAGE" locks, read-only days, `daysOff`), `checkOwner` and cancellation.
+- `test/server.test.mjs`: the tool contract (names, required fields, descriptions, annotations, bounds, output schemas) and the tool behaviour through an in-memory MCP client: results, errors, one call at a time, and cancellation. The server gets fake operations from `createServer({ getPage, ops })`, so these tests do not need Chrome.
+- `test/browser.test.mjs`: a process that starts Chrome can end, and Chrome stays open. It uses port 9333 and a temporary profile, so it does not touch your Chrome.
 - `test/e2e.test.mjs`: starts `src/server.mjs` over stdio and lists the tools.
-- `test/live.test.mjs`: reads, previews (`save: false`) and dry runs (`dryRun: true`) only. These tests never save or submit a timesheet. The last test makes sure that the list of timesheets did not change.
+- `test/live.test.mjs`: reads, previews (`save: false`) and dry runs (`dryRun: true`) only. These tests never save or submit a timesheet. They check the real results against the output schemas. The last test makes sure that the list of timesheets did not change.
 - `test/fixtures.json`: the expected values for the live tests (the approved timesheet and the preview months). If the data in the app changes, update this file.
 
 ## Exploration scripts

@@ -5,25 +5,32 @@ import { z } from "zod";
 import { getAppPage } from "./browser.mjs";
 import { listTimesheets, getTimesheet, fillMonth, submitTimesheet } from "./tidewater.mjs";
 import { DEFAULT_TASKS, MAX_HOURS_PER_DAY } from "./config.mjs";
+import { timesheetListOutput, timesheetOutput, fillMonthOutput, submitOutput } from "./schemas.mjs";
 
 const REAL_OPS = { listTimesheets, getTimesheet, fillMonth, submitTimesheet };
 
-const asText = (value) => ({ content: [{ type: "text", text: JSON.stringify(value, null, 2) }] });
+const asResult = (value) => ({
+  content: [{ type: "text", text: JSON.stringify(value, null, 2) }],
+  structuredContent: value,
+});
 // Gives only the message, never the stack.
 const asError = (err) => ({ content: [{ type: "text", text: String(err?.message ?? err) }], isError: true });
 
 export function createServer(deps = {}) {
   const getPage = deps.getPage ?? getAppPage;
   const ops = { ...REAL_OPS, ...deps.ops };
-  const server = new McpServer({ name: "tidewater", version: "0.2.0" });
+  const server = new McpServer({ name: "tidewater", version: "0.3.0" });
 
-  // Runs one operation on the app page. All errors become tool errors.
-  const run = async (fn) => {
-    try {
-      return asText(await fn(await getPage()));
-    } catch (err) {
-      return asError(err);
-    }
+  // All tools use the same browser page, so only one call at a time runs.
+  // A call that the client cancels while it waits does not run.
+  let queue = Promise.resolve();
+  const run = (signal, fn) => {
+    const job = queue.then(async () => {
+      signal?.throwIfAborted();
+      return fn(await getPage());
+    });
+    queue = job.catch(() => {});
+    return job.then(asResult, asError);
   };
 
   server.registerTool(
@@ -34,9 +41,10 @@ export function createServer(deps = {}) {
         "Lists the timesheets (feuilles de temps) of the signed-in user: ID, month, total hours and status. " +
         "Use it to find the ID of a timesheet, or to see which months already have a timesheet.",
       inputSchema: {},
+      outputSchema: timesheetListOutput,
       annotations: { readOnlyHint: true, openWorldHint: true },
     },
-    () => run((page) => ops.listTimesheets(page)),
+    (_args, extra) => run(extra.signal, async (page) => ({ timesheets: await ops.listTimesheets(page) })),
   );
 
   server.registerTool(
@@ -49,9 +57,10 @@ export function createServer(deps = {}) {
       inputSchema: {
         id: z.number().int().positive().describe("Timesheet ID, from list_timesheets"),
       },
+      outputSchema: timesheetOutput,
       annotations: { readOnlyHint: true, openWorldHint: true },
     },
-    ({ id }) => run((page) => ops.getTimesheet(page, id)),
+    ({ id }, extra) => run(extra.signal, (page) => ops.getTimesheet(page, id)),
   );
 
   server.registerTool(
@@ -85,11 +94,12 @@ export function createServer(deps = {}) {
         daysOff: z.array(z.number().int().min(1).max(31)).default([]).describe("Days of the month with no work (for example leave)"),
         tasks: z.array(z.string()).optional().describe("'Project > Task' texts. Leave empty to use the default four tasks"),
       },
+      outputSchema: fillMonthOutput,
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
     },
-    (args) =>
-      run(async (page) => {
-        const result = await ops.fillMonth(page, args);
+    (args, extra) =>
+      run(extra.signal, async (page) => {
+        const result = await ops.fillMonth(page, { ...args, signal: extra.signal });
         if (result.saved) {
           result.nextStep =
             `Ask the user to confirm that timesheet ${result.id} is correct and if they want to submit it. ` +
@@ -112,13 +122,14 @@ export function createServer(deps = {}) {
         confirm: z.boolean().describe("Must be true. Set it only when the user has explicitly agreed to submit this timesheet"),
         dryRun: z.boolean().default(false).describe("true = find the 'Soumettre' button but do not click it"),
       },
+      outputSchema: submitOutput,
       annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: true },
     },
-    ({ id, confirm, dryRun }) => {
+    ({ id, confirm, dryRun }, extra) => {
       if (!dryRun && confirm !== true) {
         return asError("The tool did not submit. Ask the user to confirm, then call again with confirm=true.");
       }
-      return run((page) => ops.submitTimesheet(page, { id, dryRun }));
+      return run(extra.signal, (page) => ops.submitTimesheet(page, { id, dryRun, signal: extra.signal }));
     },
   );
 

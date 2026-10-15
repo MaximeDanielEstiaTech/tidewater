@@ -6,31 +6,44 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Write all text in ASD-STE100 (Simplified Technical English). This rule applies to replies, documents, code comments and commit messages. Do not change code identifiers or quoted text.
 
-## UI-change rule
+## MCP tool usage
 
-The WorkTimePro app can change. Then a `tidewater` tool can fail. An error that starts with `UI_CHANGED` shows this type of failure. A hook in `.claude/settings.json` also reminds you of this rule.
+This rule applies to you and to all subagents.
 
-When a `tidewater` tool fails because the app changed, do these steps:
+### Custom MCP servers
 
-1. Tell the user that the app possibly changed. Do not try the same action again and again.
-2. Examine the evidence. The error gives the URL, a screenshot and the page HTML (in `tidewater-mcp/explore/out/ui-errors/`). If necessary, use the scripts in `tidewater-mcp/explore/`.
-3. Find the cause: compare the old selector, text or Angular scope with the new one.
-4. Fix the code in `tidewater-mcp/src/`. Keep the fix small.
-5. Test the fix with the CLI. Use only a preview (`fill` without `--save`) or a dry run (`submit` without `--confirm`). Do not save or submit a real timesheet for a test.
-6. Make a commit with the fix. Push the commit if the user agrees.
-7. Create a GitHub issue. The user gives permission to create this issue without a question first:
+A custom MCP server is a server in `.mcp.json` whose code is in this repository. Its tools have the prefix `mcp__<server name>__`. Its **server folder** is the first folder in the path of its entry file in `.mcp.json`. Example: `"args": ["tidewater-mcp/src/server.mjs"]` gives the server folder `tidewater-mcp/`.
 
-   ```
-   gh issue create --label ui-change --title "UI change: <step> - <short description>" --body-file <file>
-   ```
+### When to write a log file
 
-   Write the body file in the scratchpad directory. The body has these sections:
-   - **Symptom**: the tool, its parameters and the full `UI_CHANGED` error message.
-   - **Cause**: what changed in the app (old and new selector, text or structure).
-   - **Fix**: the changed files and functions, and the commit SHA (if pushed).
-   - **Test**: the CLI command and its result.
-   - **Evidence**: the names of the screenshot and HTML files. Do not attach them: they can contain personal data.
+When a tool of a custom MCP server gives a fatal error or an unexpected output, write a log file in `<server folder>/issue/`. Do this before you try a different action.
 
-8. Give the issue URL to the user. Then do the action that the user asked for at the start, if it is still necessary.
+- **Usual refusal** (not fatal): an error that the tool gives on purpose and that tells you to change the input or to ask the user. Examples: input that the schema refuses, an unknown ID, a missing confirmation. The section "Usual refusals" in the README of the server folder gives the full list for that server.
+- **Fatal error**: all other errors. Examples: the tool fails, the server does not answer, an error that the README does not list, a `UI_CHANGED` error.
+- **Unexpected output**: the tool gives no error, but the result does not agree with the request or with the data. Examples: an incorrect total, a missing field, an action that the tool reports as done but that did not occur.
 
-If you cannot fix the problem, create the issue anyway. Write "Fix: not found" and add what you examined.
+### Log file
+
+Name the file `YYYY-MM-DD-HHMMSS-<tool>-<short-description>.md`. Use these sections:
+
+- **Time**: date and time.
+- **Agent**: main agent or subagent (with its task).
+- **Request**: what the user asked for.
+- **Tool call**: the tool name and all parameters.
+- **Result**: the full error message or the output.
+- **Expected**: what you expected, and why.
+- **Next action**: what you did after the error (for example a fix, a GitHub issue, or a question to the user).
+
+Then tell the user the path of the log file. After a tool error of a custom MCP server, a hook (`.claude/hooks/mcp-error-reminder.mjs`) reminds you of this rule and makes sure that the `issue/` folder exists. The hook cannot find an unexpected output: you must find it yourself. The log files are not in git, because they can contain personal data.
+
+### New custom MCP server
+
+When you make a new custom MCP server, use the `mcp-design` skill and do these steps. Then this rule and the hook apply to the server with no change to this file:
+
+1. Put the server in its own folder at the root of the repository, with the name `<name>-mcp/`.
+2. Add the server to `.mcp.json`. The path of the entry file must start with the server folder.
+3. Add an empty `issue/` folder with an empty `issue/.gitkeep` file. Git does not keep empty folders.
+4. Add a section "Usual refusals" to the README of the server.
+5. Add a test that makes sure that `issue/.gitkeep`, the section "Usual refusals" and the `.mcp.json` entry exist.
+
+When you add a tool to a custom MCP server, add each error that the tool gives on purpose to the section "Usual refusals".

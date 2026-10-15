@@ -9,7 +9,21 @@ import { McpError } from "@modelcontextprotocol/sdk/types.js";
 import { createServer } from "../src/create-server.mjs";
 import { TimesheetError } from "../src/tidewater.mjs";
 
-const SHEET = { id: 1425, period: "October", year: 2026, periodStart: "2026-10-01", status: "Draft", totalHours: 161.26, tasks: [] };
+const SUMMARY = { id: 1425, period: "October", year: 2026, periodStart: "2026-10-01", totalHours: 161.26, status: "Draft" };
+const SHEET = { ...SUMMARY, tasks: [{ task: "PANDRONE - ETECH/PANDRO > -", hours: 7.33, days: [5] }] };
+const FILL = {
+  period: "Novembre 2026",
+  mode: "rotate",
+  hoursPerDay: 7.33,
+  workDays: 1,
+  holidaysSkipped: [11],
+  lockedDays: [],
+  daysOffSkipped: [],
+  timeOffInApp: [],
+  expectedTotal: 7.33,
+  formTotal: 7.33,
+  perTask: [{ task: "PANDRONE - ETECH/PANDRO > -", hours: 7.33, days: 1 }],
+};
 
 // Fake operations. Each test can replace one of them. "calls" records the calls.
 function fakeOps(overrides = {}) {
@@ -19,10 +33,14 @@ function fakeOps(overrides = {}) {
     return typeof result === "function" ? result(args) : result;
   };
   const ops = {
-    listTimesheets: record("listTimesheets", [SHEET]),
+    listTimesheets: record("listTimesheets", [SUMMARY]),
     getTimesheet: record("getTimesheet", SHEET),
-    fillMonth: record("fillMonth", (opts) => ({ saved: opts.save !== false, id: 1500, period: "Novembre 2026" })),
-    submitTimesheet: record("submitTimesheet", ({ id, dryRun }) => ({ submitted: !dryRun, dryRun, timesheet: { ...SHEET, id } })),
+    fillMonth: record("fillMonth", (opts) =>
+      opts.save ? { saved: true, id: 1500, status: "Draft", storedTotal: 7.33, ...FILL } : { saved: false, ...FILL },
+    ),
+    submitTimesheet: record("submitTimesheet", ({ id, dryRun }) =>
+      dryRun ? { submitted: false, dryRun: true, buttonFound: "Soumettre", timesheet: { ...SHEET, id } } : { submitted: true, timesheet: { ...SHEET, id } },
+    ),
   };
   for (const [name, fn] of Object.entries(overrides)) ops[name] = record(name, fn);
   return { ops, calls };
@@ -126,6 +144,16 @@ describe("contract", () => {
     assert.match(d.submit_timesheet, /explicitly/);
   });
 
+  test("every_tool_has_an_output_schema", async () => {
+    const { client } = await connect();
+    const { tools } = await client.listTools();
+    const props = Object.fromEntries(tools.map((t) => [t.name, Object.keys(t.outputSchema?.properties ?? {})]));
+    assert.ok(props.list_timesheets.includes("timesheets"));
+    assert.ok(props.get_timesheet.includes("tasks"));
+    assert.ok(props.fill_month.includes("saved") && props.fill_month.includes("lockedDays"));
+    assert.ok(props.submit_timesheet.includes("submitted"));
+  });
+
   test("fill_month_bounds_and_defaults", async () => {
     const { client } = await connect();
     const { tools } = await client.listTools();
@@ -142,7 +170,24 @@ describe("happy path", () => {
     const { client } = await connect();
     const res = await client.callTool({ name: "list_timesheets", arguments: {} });
     assert.ok(!res.isError);
-    assert.deepEqual(JSON.parse(text(res)), [SHEET]);
+    assert.deepEqual(res.structuredContent, { timesheets: [SUMMARY] });
+  });
+
+  test("the_text_is_the_structured_content_as_json", async () => {
+    const { client } = await connect();
+    for (const [name, args] of [
+      ["list_timesheets", {}],
+      ["get_timesheet", { id: 1425 }],
+      ["fill_month", { month: 11, year: 2026 }],
+      ["fill_month", { month: 11, year: 2026, save: true }],
+      ["submit_timesheet", { id: 1425, confirm: false, dryRun: true }],
+      ["submit_timesheet", { id: 1425, confirm: true }],
+    ]) {
+      const res = await client.callTool({ name, arguments: args });
+      assert.ok(!res.isError, `${name}: ${text(res)}`);
+      assert.ok(res.structuredContent, `${name} has no structuredContent`);
+      assert.deepEqual(JSON.parse(text(res)), res.structuredContent, name);
+    }
   });
 
   test("get_timesheet_returns_the_timesheet", async () => {
@@ -180,7 +225,88 @@ describe("happy path", () => {
     const { client, calls } = await connect();
     const res = await client.callTool({ name: "submit_timesheet", arguments: { id: 1425, confirm: false, dryRun: true } });
     assert.ok(!res.isError);
-    assert.deepEqual(calls[0].args, { id: 1425, dryRun: true });
+    assert.equal(calls[0].args.id, 1425);
+    assert.equal(calls[0].args.dryRun, true);
+  });
+});
+
+// A gate: an operation waits on gate.wait until the test calls gate.open().
+function gate() {
+  let open;
+  const wait = new Promise((r) => (open = r));
+  return { wait, open };
+}
+// Lets the in-memory messages arrive. It does not wait for a fixed time.
+const settle = async () => {
+  for (let i = 0; i < 20; i++) await new Promise((r) => setImmediate(r));
+};
+
+describe("one call at a time on the page", () => {
+  test("calls_do_not_overlap", async () => {
+    const events = [];
+    const g = gate();
+    const { client } = await connect({
+      fillMonth: async () => {
+        events.push("fill start");
+        await g.wait;
+        events.push("fill end");
+        return { saved: false, ...FILL };
+      },
+      listTimesheets: () => {
+        events.push("list");
+        return [SUMMARY];
+      },
+    });
+    const fill = client.callTool({ name: "fill_month", arguments: { month: 11, year: 2026 } });
+    await settle();
+    const list = client.callTool({ name: "list_timesheets", arguments: {} });
+    await settle();
+    assert.deepEqual(events, ["fill start"], "list_timesheets must wait for fill_month");
+    g.open();
+    await Promise.all([fill, list]);
+    assert.deepEqual(events, ["fill start", "fill end", "list"]);
+  });
+
+  test("a_failed_call_does_not_block_the_next_call", async () => {
+    const { client } = await connect({ getTimesheet: throwing(new Error("boom")) });
+    const [a, b] = await Promise.all([
+      client.callTool({ name: "get_timesheet", arguments: { id: 1 } }),
+      client.callTool({ name: "list_timesheets", arguments: {} }),
+    ]);
+    assert.equal(a.isError, true);
+    assert.ok(!b.isError);
+  });
+});
+
+describe("cancellation", () => {
+  test("a_call_cancelled_while_it_waits_does_not_run", async () => {
+    const g = gate();
+    const { client, calls } = await connect({
+      fillMonth: async () => {
+        await g.wait;
+        return { saved: false, ...FILL };
+      },
+    });
+    const first = client.callTool({ name: "fill_month", arguments: { month: 11, year: 2026 } });
+    await settle();
+    const ac = new AbortController();
+    const second = client.callTool({ name: "submit_timesheet", arguments: { id: 1425, confirm: true } }, undefined, { signal: ac.signal });
+    await settle();
+    ac.abort();
+    await assert.rejects(second);
+    await settle();
+    g.open();
+    await first;
+    await settle();
+    assert.deepEqual(calls.map((c) => c.name), ["fillMonth"], "submitTimesheet must not run");
+    await assertHealthy(client);
+  });
+
+  test("fill_month_and_submit_get_the_abort_signal", async () => {
+    const { client, calls } = await connect();
+    await client.callTool({ name: "fill_month", arguments: { month: 11, year: 2026 } });
+    await client.callTool({ name: "submit_timesheet", arguments: { id: 1425, confirm: false, dryRun: true } });
+    for (const c of calls) assert.ok(c.args.signal instanceof AbortSignal, c.name);
   });
 });
 

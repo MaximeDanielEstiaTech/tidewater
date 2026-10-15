@@ -105,7 +105,8 @@ const SUBMITTABLE = ["Draft", "Rejected"];
  * Submits a saved timesheet for approval: it clicks "Soumettre", then "Ok" in the confirmation dialog.
  * With dryRun=true, the function opens the timesheet and finds the button, but does not click it.
  */
-export async function submitTimesheet(page, { id, dryRun = false }) {
+export async function submitTimesheet(page, { id, dryRun = false, signal }) {
+  signal?.throwIfAborted();
   const before = await getTimesheet(page, id);
   if (!SUBMITTABLE.includes(before.status)) {
     throw new Error(`Timesheet ${id} has status "${before.status}". You can submit only a timesheet with status ${SUBMITTABLE.join(" or ")}.`);
@@ -127,6 +128,8 @@ export async function submitTimesheet(page, { id, dryRun = false }) {
   );
 
   if (dryRun) return { submitted: false, dryRun: true, buttonFound: label, timesheet: before };
+  // The last point where a cancellation stops the submission.
+  signal?.throwIfAborted();
 
   // 1. Click "Soumettre". 2. Click "Ok" in the "Are you sure?" dialog.
   await uiStep(page, "click Soumettre then Ok", async () => {
@@ -199,6 +202,8 @@ const round2 = (n) => Math.round(n * 100) / 100;
  * The function does not submit the timesheet. Use submitTimesheet for that.
  */
 export async function fillMonth(page, opts) {
+  const signal = opts.signal;
+  signal?.throwIfAborted();
   const month = parseMonth(opts.month);
   const year = Number(opts.year);
   const hoursPerDay = opts.hoursPerDay ?? MAX_HOURS_PER_DAY;
@@ -220,6 +225,7 @@ export async function fillMonth(page, opts) {
   }
 
   // 1. Open a new, empty "Créer une feuille de temps" form.
+  signal?.throwIfAborted();
   await page.evaluate((route) => {
     location.hash = "#!/timesheets/my";
     setTimeout(() => (location.hash = route), 300);
@@ -356,6 +362,8 @@ export async function fillMonth(page, opts) {
   }
 
   // 4. Save. The app saves the timesheet as a draft and opens its details page.
+  // The last point where a cancellation stops the save.
+  signal?.throwIfAborted();
   const saveFound = await page.evaluate(() => {
     const btn = [...document.querySelectorAll("button")].find((b) => b.innerText.trim() === "Enregistrer");
     btn?.click();

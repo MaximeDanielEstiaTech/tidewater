@@ -7,6 +7,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import { getAppPage } from "../src/browser.mjs";
 import { listTimesheets, getTimesheet, fillMonth, submitTimesheet } from "../src/tidewater.mjs";
+import { timesheetListOutput, timesheetOutput, fillMonthOutput, submitOutput } from "../src/schemas.mjs";
 
 const fx = JSON.parse(fs.readFileSync(new URL("./fixtures.json", import.meta.url), "utf8"));
 
@@ -28,6 +29,7 @@ describe("read", () => {
   test("list_timesheets includes the approved fixture", async () => {
     listBefore = await listTimesheets(page);
     assert.ok(listBefore.length > 0);
+    timesheetListOutput.parse({ timesheets: listBefore });
     const t = listBefore.find((x) => x.id === fx.approved.id);
     assert.ok(t, `timesheet ${fx.approved.id} is not in the list`);
     assert.equal(t.periodStart, fx.approved.periodStart);
@@ -37,6 +39,7 @@ describe("read", () => {
 
   test("get_timesheet reads the approved fixture", async () => {
     const t = await getTimesheet(page, fx.approved.id);
+    timesheetOutput.parse(t);
     assert.equal(t.status, fx.approved.status);
     assert.equal(t.totalHours, fx.approved.totalHours);
     assert.equal(t.tasks.length, fx.approved.tasks);
@@ -53,6 +56,7 @@ describe("fill_month (preview only)", () => {
   for (const p of fx.previews) {
     test(`preview ${p.year}-${String(p.month).padStart(2, "0")}`, async () => {
       const r = await preview({ month: p.month, year: p.year, allowDuplicate: true });
+      fillMonthOutput.parse(r);
       assert.equal(r.saved, false);
       assert.equal(r.workDays, p.workDays);
       assert.deepEqual(r.holidaysSkipped, p.holidays);
@@ -85,6 +89,7 @@ describe("submit_timesheet (dry run only)", () => {
     const draft = listBefore.find((x) => x.status === "Draft" || x.status === "Rejected");
     if (!draft) return t.skip("no Draft or Rejected timesheet");
     const r = await dryRunSubmit(draft.id);
+    submitOutput.parse(r);
     assert.equal(r.submitted, false);
     assert.equal(r.buttonFound, "Soumettre");
     const after = await getTimesheet(page, draft.id);

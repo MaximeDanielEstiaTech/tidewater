@@ -2,7 +2,7 @@
 // Run: npm test
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { parseMonth, distribute, classifyDays, checkOwner, TimesheetError } from "../src/tidewater.mjs";
+import { parseMonth, distribute, classifyDays, checkOwner, TimesheetError, fillMonth, submitTimesheet } from "../src/tidewater.mjs";
 import { DEFAULT_TASKS, MAX_HOURS_PER_DAY } from "../src/config.mjs";
 
 const round2 = (n) => Math.round(n * 100) / 100;
@@ -139,6 +139,20 @@ describe("classifyDays", () => {
     assert.ok(!r.workDays.includes(7) && !r.workDays.includes(8));
     assert.deepEqual(r.holidays, []);
     assert.deepEqual(r.locked, []);
+  });
+});
+
+describe("cancellation", () => {
+  // A page that fails on each use. The functions must stop before they use it.
+  const untouchable = new Proxy({}, { get: (_t, prop) => { throw new Error(`page.${String(prop)} was used`); } });
+  const aborted = () => AbortSignal.abort();
+
+  test("fillMonth stops before it uses the page", async () => {
+    await assert.rejects(fillMonth(untouchable, { month: 11, year: 2026, signal: aborted() }), { name: "AbortError" });
+  });
+
+  test("submitTimesheet stops before it uses the page", async () => {
+    await assert.rejects(submitTimesheet(untouchable, { id: 1425, signal: aborted() }), { name: "AbortError" });
   });
 });
 

@@ -48,9 +48,12 @@ Add a new tool to the tidewater MCP server (`tidewater-mcp/`).
 - Example IDs to test with: <for example 1425>
 
 ## 9. Deliverables
-- Add the tool in `src/server.mjs` and the logic in `src/tidewater.mjs`.
+- Use the `mcp-design` skill: write the tests first.
+- Add the tool in `src/create-server.mjs` and the logic in `src/tidewater.mjs`.
 - Add a CLI command in `src/cli.mjs`: `node src/cli.mjs <command> <args>`.
 - Update the "Tools" table and the parameter list in `tidewater-mcp/README.md`.
+- Add each error that the tool gives on purpose to the section "Usual refusals" in `tidewater-mcp/README.md`.
+- Keep the empty `tidewater-mcp/issue/` folder (with `issue/.gitkeep`).
 - Test the tool with a preview or a dry run. Show me the result before you do a real write.
 ```
 

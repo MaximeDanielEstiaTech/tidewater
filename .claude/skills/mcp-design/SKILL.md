@@ -32,6 +32,18 @@ Keep logic out of the transport, in three layers:
 
 If a test needs the MCP SDK to check business logic, that logic belongs in the domain layer.
 
+### Server folder (required in this repository)
+
+Each custom MCP server must have these items, so that the "MCP tool usage" rule in `CLAUDE.md` and its hook apply to it:
+
+- Its own folder at the root of the repository, with the name `<name>-mcp/`.
+- An entry in `.mcp.json`. The path of the entry file starts with the server folder (for example `"args": ["<name>-mcp/src/server.mjs"]`).
+- An empty `issue/` folder with an empty `issue/.gitkeep` file. Agents write error logs in this folder. Git keeps only `.gitkeep`.
+- A section `## Usual refusals` in the README of the server. It lists each error that a tool gives on purpose (for example incorrect input, unknown ID, missing confirmation). All other errors are fatal errors.
+- A test that makes sure that `issue/.gitkeep`, the section `## Usual refusals` and the `.mcp.json` entry exist.
+
+When you add a tool that has a new refusal, add the refusal to the section `## Usual refusals` in the same change.
+
 ## Step 2: Run the TDD loop, one behaviour at a time
 
 For each behaviour:
@@ -106,5 +118,7 @@ Run the full suite and check each item:
 - [ ] Server healthy after every error-path test
 - [ ] E2E smoke test passes on the built artefact, if the project has an E2E suite
 - [ ] The description tells a model when to use the tool and when not to
+- [ ] The server folder has `issue/.gitkeep`, a `.mcp.json` entry and a test for them
+- [ ] Each new refusal of the tool is in the section `## Usual refusals` of the README
 
 Report which items you could not complete and why. Suggest the user check the tool manually in the MCP Inspector.

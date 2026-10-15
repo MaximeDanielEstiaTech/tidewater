@@ -2,11 +2,11 @@
   "hooks": {
     "PostToolUse": [
       {
-        "matcher": "mcp__tidewater__.*",
+        "matcher": "mcp__.*",
         "hooks": [
           {
             "type": "command",
-            "command": "node .claude/hooks/ui-change-reminder.mjs",
+            "command": "node .claude/hooks/mcp-error-reminder.mjs",
             "timeout": 10
           }
         ]
@@ -14,11 +14,11 @@
     ],
     "PostToolUseFailure": [
       {
-        "matcher": "mcp__tidewater__.*",
+        "matcher": "mcp__.*",
         "hooks": [
           {
             "type": "command",
-            "command": "node .claude/hooks/ui-change-reminder.mjs",
+            "command": "node .claude/hooks/mcp-error-reminder.mjs",
             "timeout": 10
           }
         ]

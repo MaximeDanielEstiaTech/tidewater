@@ -1,7 +1,8 @@
 // Gives a page on the timesheet app.
 // If a Chrome is open on DEBUG_PORT (for example from explore/launch.mjs), the server uses it.
-// If not, the server starts a visible Chrome with the persistent profile.
+// If not, the server starts a visible Chrome with the persistent profile. Chrome stays open after the server stops.
 import fs from "node:fs";
+import { spawn } from "node:child_process";
 import puppeteer from "puppeteer-core";
 import { APP_URL, CHROME_PATH, PROFILE_DIR, DEBUG_PORT } from "./config.mjs";
 import { uiStep } from "./ui-errors.mjs";
@@ -10,20 +11,45 @@ const SIGN_IN_TIMEOUT_MS = 5 * 60_000;
 
 let browser = null;
 
-async function getBrowser() {
+const CHROME_START_TIMEOUT_MS = 30_000;
+
+// Starts a visible Chrome that does not depend on this Node process. Chrome stays open
+// when the server, the CLI or a test stops, so the user stays signed in, and Node can end.
+function startChrome() {
+  fs.mkdirSync(PROFILE_DIR, { recursive: true });
+  const child = spawn(
+    CHROME_PATH,
+    [
+      `--remote-debugging-port=${DEBUG_PORT}`,
+      `--user-data-dir=${PROFILE_DIR}`,
+      "--no-first-run",
+      "--no-default-browser-check",
+      "--start-maximized",
+    ],
+    { detached: true, stdio: "ignore" },
+  );
+  child.unref();
+}
+
+export async function getBrowser() {
   if (browser?.connected) return browser;
+  const connect = () => puppeteer.connect({ browserURL: `http://127.0.0.1:${DEBUG_PORT}`, defaultViewport: null });
   try {
-    browser = await puppeteer.connect({ browserURL: `http://127.0.0.1:${DEBUG_PORT}`, defaultViewport: null });
+    browser = await connect();
   } catch {
-    fs.mkdirSync(PROFILE_DIR, { recursive: true });
-    browser = await puppeteer.launch({
-      executablePath: CHROME_PATH,
-      headless: false,
-      userDataDir: PROFILE_DIR,
-      debuggingPort: DEBUG_PORT,
-      defaultViewport: null,
-      args: ["--start-maximized"],
-    });
+    startChrome();
+    const deadline = Date.now() + CHROME_START_TIMEOUT_MS;
+    for (;;) {
+      await new Promise((r) => setTimeout(r, 500));
+      try {
+        browser = await connect();
+        break;
+      } catch {
+        if (Date.now() > deadline) {
+          throw new Error(`Chrome did not open the debug port ${DEBUG_PORT}. Close all Chrome windows that use the tidewater profile, then try again.`);
+        }
+      }
+    }
   }
   return browser;
 }

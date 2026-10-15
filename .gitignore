@@ -1,3 +1,5 @@
 node_modules/
 tidewater-mcp/explore/out/
 .claude/settings.local.json
+*/issue/*
+!*/issue/.gitkeep
