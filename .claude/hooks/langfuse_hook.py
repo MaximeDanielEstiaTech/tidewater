@@ -3,8 +3,11 @@
 Claude Code -> Langfuse hook
 
 Source: https://langfuse.com/integrations/developer-tools/claude-code (needs langfuse>=4.0,<5).
-Registered as a Stop hook in .claude/settings.json of this repository only.
+Registered as a Stop hook in .claude/settings.json of this repository only, through langfuse-hook.mjs
+(the launcher finds a Python with the langfuse package: python3, python or py -3).
 Tracing is on only when TRACE_TO_LANGFUSE="true" (set in .claude/settings.local.json with the keys).
+To stop tracing with no restart, make the file .claude/langfuse-state/off. Remove it to start again.
+The turns made while this file exists are skipped: they are not sent later.
 """
 
 import json
@@ -34,6 +37,8 @@ STATE_DIR = Path(__file__).resolve().parent.parent / "langfuse-state"
 LOG_FILE = STATE_DIR / "langfuse_hook.log"
 STATE_FILE = STATE_DIR / "langfuse_state.json"
 LOCK_FILE = STATE_DIR / "langfuse_state.lock"
+# When this file exists, tracing is paused. Read at each Stop, so no restart is necessary.
+OFF_FILE = STATE_DIR / "off"
 
 DEBUG = os.environ.get("CC_LANGFUSE_DEBUG", "").lower() == "true"
 try:
@@ -712,6 +717,21 @@ def main() -> int:
 
     if not transcript_path.exists():
         debug(f"Transcript path does not exist: {transcript_path}")
+        return 0
+
+    if OFF_FILE.exists():
+        # Paused: move the offset past the new turns, so that they are not sent when tracing starts again.
+        try:
+            with FileLock(LOCK_FILE):
+                state = load_state()
+                key = state_key(session_id, str(transcript_path))
+                ss = load_session_state(state, key)
+                _, ss = read_new_jsonl(transcript_path, ss)
+                write_session_state(state, key, ss)
+                save_state(state)
+            debug(f"Tracing paused ({OFF_FILE} exists); skipped new turns")
+        except Exception as e:
+            debug(f"Pause skip failed: {e}")
         return 0
 
     langfuse = None

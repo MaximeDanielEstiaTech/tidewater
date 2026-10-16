@@ -1,12 +1,23 @@
 {
   "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/check-setup.mjs\"",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
     "PostToolUse": [
       {
         "matcher": "mcp__.*",
         "hooks": [
           {
             "type": "command",
-            "command": "node .claude/hooks/mcp-error-reminder.mjs",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/mcp-error-reminder.mjs\"",
             "timeout": 10
           }
         ]
@@ -18,7 +29,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node .claude/hooks/mcp-error-reminder.mjs",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/mcp-error-reminder.mjs\"",
             "timeout": 10
           }
         ]
@@ -29,7 +40,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 .claude/hooks/langfuse_hook.py",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/langfuse-hook.mjs\"",
             "timeout": 30
           }
         ]

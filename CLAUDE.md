@@ -6,6 +6,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Write all text in ASD-STE100 (Simplified Technical English). This rule applies to replies, documents, code comments and commit messages. Do not change code identifiers or quoted text.
 
+## Setup
+
+The requirements and the setup steps for a new computer are in the section "Setup" of `README.md`. If the session start shows that the setup is not complete, tell the user what to do. Do not run the steps that need the user (sign-in, keys) yourself.
+
+Keep scripts and hooks free of paths of one computer or one user. Use `$CLAUDE_PROJECT_DIR`, paths relative to the script, or environment variables (for example `LOCALAPPDATA`). When you add a requirement, add it to "Setup" in `README.md` and, if a check is possible, to `.claude/hooks/check-setup.mjs`.
+
 ## MCP tool usage
 
 This rule applies to you and to all subagents.

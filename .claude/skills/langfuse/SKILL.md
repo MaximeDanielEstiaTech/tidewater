@@ -43,6 +43,7 @@ Follow these principles for ALL Langfuse work:
 - calibrating a new or existing LLM-as-a-Judge against labeled examples, iterating on its prompt, and deploying the approved judge: references/judge-calibration.md
 - systematic error analysis when requested directly or eval setup still lacks concrete failure modes after agent-led trace inspection: references/error-analysis.md
 - setting up CI/CD experiment gates with `langfuse/experiment-action`: references/ci-cd.md
+- setting up, changing or repairing the tracing of Claude Code sessions (Stop hook), always with the `.claude/langfuse-state/` folder and the `off` file: references/claude-code-tracing.md
 - submitting feedback about this skill: references/skill-feedback.md
 
 
