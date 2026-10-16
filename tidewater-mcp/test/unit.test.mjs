@@ -13,7 +13,7 @@ import {
   submitTimesheet,
   deleteTimesheet,
 } from "../src/tidewater.mjs";
-import { DEFAULT_TASKS, MAX_HOURS_PER_DAY } from "../src/config.mjs";
+import { DEFAULT_TASKS, MAX_HOURS_PER_DAY, findChrome } from "../src/config.mjs";
 
 const round2 = (n) => Math.round(n * 100) / 100;
 const sum = (values) => round2(values.reduce((a, b) => a + b, 0));
@@ -216,5 +216,23 @@ describe("checkOwner", () => {
     } catch (err) {
       assert.doesNotMatch(err.message, /99\.5|\b12\b/);
     }
+  });
+});
+
+describe("findChrome", () => {
+  const env = { PROGRAMFILES: "C:\\PF", "PROGRAMFILES(X86)": "C:\\PF86", LOCALAPPDATA: "C:\\LAD" };
+  test("CHROME_PATH has priority", () => {
+    assert.equal(findChrome({ ...env, CHROME_PATH: "D:\\chrome.exe" }, () => false), "D:\\chrome.exe");
+  });
+  test("finds Chrome in Program Files (x86)", () => {
+    const found = findChrome(env, (p) => p.startsWith("C:\\PF86"));
+    assert.equal(found, "C:\\PF86\\Google\\Chrome\\Application\\chrome.exe");
+  });
+  test("finds Chrome in the user folder", () => {
+    const found = findChrome(env, (p) => p.startsWith("C:\\LAD"));
+    assert.equal(found, "C:\\LAD\\Google\\Chrome\\Application\\chrome.exe");
+  });
+  test("returns null when there is no Chrome", () => {
+    assert.equal(findChrome(env, () => false), null);
   });
 });

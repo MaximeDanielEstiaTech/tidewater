@@ -1,3 +1,4 @@
+import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
 
@@ -6,8 +7,16 @@ export const APP_URL =
 
 export const LIST_DATA_URL = "https://netestia.sharepoint.com/sites/WorkTimePro/APP/_vti_bin/ListData.svc";
 
-export const CHROME_PATH =
-  process.env.CHROME_PATH ?? "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe";
+// Returns the path of chrome.exe: CHROME_PATH if set, else the first standard Windows location
+// that exists, else null. Chrome can be in "Program Files", "Program Files (x86)" or the user folder.
+export function findChrome(env = process.env, exists = fs.existsSync) {
+  if (env.CHROME_PATH) return env.CHROME_PATH;
+  const suffix = path.win32.join("Google", "Chrome", "Application", "chrome.exe");
+  const roots = [env.PROGRAMFILES, env["PROGRAMFILES(X86)"], env.LOCALAPPDATA].filter(Boolean);
+  return roots.map((root) => path.win32.join(root, suffix)).find((p) => exists(p)) ?? null;
+}
+
+export const CHROME_PATH = findChrome();
 
 // Keep the browser profile out of Google Drive. The profile has many small files that change often.
 export const PROFILE_DIR =

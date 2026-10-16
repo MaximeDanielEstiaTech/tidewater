@@ -16,6 +16,7 @@ The `.mcp.json` file in the repository root registers the server for Claude Code
 
 The server uses a persistent Chrome profile in `%LOCALAPPDATA%\tidewater-mcp\chrome-profile`.
 If a Chrome is open on port 9222 (for example from `npm run explore`), the server uses that Chrome. If not, the server starts one. This Chrome stays open when the server, the CLI or the tests stop, so you stay signed in.
+To find `chrome.exe`, the server uses `CHROME_PATH` if it is set. If not, it looks in `%PROGRAMFILES%`, `%PROGRAMFILES(X86)%` and `%LOCALAPPDATA%` (folder `Google\Chrome\Application`).
 
 The server does one tool call at a time, because all tools use the same Chrome page. A call that the client cancels while it waits does not run. The tools return their results as `structuredContent`, with an output schema (`src/schemas.mjs`).
 If Microsoft asks for a sign-in, sign in in the Chrome window. The server waits for 5 minutes at most.

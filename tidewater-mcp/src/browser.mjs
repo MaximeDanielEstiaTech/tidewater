@@ -10,12 +10,16 @@ import { uiStep } from "./ui-errors.mjs";
 const SIGN_IN_TIMEOUT_MS = 5 * 60_000;
 
 let browser = null;
+let spawnError = null;
 
 const CHROME_START_TIMEOUT_MS = 30_000;
 
 // Starts a visible Chrome that does not depend on this Node process. Chrome stays open
 // when the server, the CLI or a test stops, so the user stays signed in, and Node can end.
 function startChrome() {
+  if (!CHROME_PATH) {
+    throw new Error("Chrome was not found. Install Google Chrome, or set CHROME_PATH to the path of chrome.exe.");
+  }
   fs.mkdirSync(PROFILE_DIR, { recursive: true });
   const child = spawn(
     CHROME_PATH,
@@ -28,6 +32,9 @@ function startChrome() {
     ],
     { detached: true, stdio: "ignore" },
   );
+  // Without this handler, a spawn error (for example an incorrect CHROME_PATH) stops the server.
+  // getBrowser() then reports the error when the debug port does not open.
+  child.on("error", (err) => { spawnError = err; });
   child.unref();
 }
 
@@ -37,10 +44,14 @@ export async function getBrowser() {
   try {
     browser = await connect();
   } catch {
+    spawnError = null;
     startChrome();
     const deadline = Date.now() + CHROME_START_TIMEOUT_MS;
     for (;;) {
       await new Promise((r) => setTimeout(r, 500));
+      if (spawnError) {
+        throw new Error(`Chrome did not start (${spawnError.code ?? spawnError.message}) from "${CHROME_PATH}". Set CHROME_PATH to the path of chrome.exe.`);
+      }
       try {
         browser = await connect();
         break;
