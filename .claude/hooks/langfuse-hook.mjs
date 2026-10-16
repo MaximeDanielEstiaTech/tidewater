@@ -1,15 +1,16 @@
 // Claude Code hook (Stop). Starts langfuse_hook.py with a Python that has the langfuse package.
 // Python has different command names on different computers (python3, python, py -3), so this launcher finds one.
-// When TRACE_TO_LANGFUSE is not "true", it stops at once: then Python is not necessary.
+// Tracing is off by default. When .claude/langfuse-state/on does not exist, it stops at once: then Python is not necessary.
 // LANGFUSE_PYTHON (a path to python.exe) overrides the search.
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-if (process.env.TRACE_TO_LANGFUSE !== "true") process.exit(0);
+const hooksDir = path.dirname(fileURLToPath(import.meta.url));
+if (!fs.existsSync(path.join(hooksDir, "..", "langfuse-state", "on"))) process.exit(0);
 
-const script = path.join(path.dirname(fileURLToPath(import.meta.url)), "langfuse_hook.py");
+const script = path.join(hooksDir, "langfuse_hook.py");
 const candidates = [
   ...(process.env.LANGFUSE_PYTHON ? [[process.env.LANGFUSE_PYTHON]] : []),
   ["python3"],
@@ -26,8 +27,9 @@ const python = candidates.find(([cmd, ...args]) => {
 
 if (!python) {
   console.error(
-    "Langfuse tracing: TRACE_TO_LANGFUSE is true, but no Python with the langfuse package was found " +
-      "(tried python3, python, py -3). Run: pip install \"langfuse>=4.0,<5\", or set LANGFUSE_PYTHON.",
+    "Langfuse tracing: .claude/langfuse-state/on exists, but no Python with the langfuse package was found " +
+      "(tried python3, python, py -3). Run: pip install \"langfuse>=4.0,<5\", set LANGFUSE_PYTHON, " +
+      "or remove the file to turn tracing off.",
   );
   process.exit(1);
 }

@@ -16,7 +16,7 @@ Do these steps one time on each computer. At the start of each session, the hook
 | Claude Code (`claude` in the `PATH`) | all | `claude --version` |
 | Google Chrome | the MCP server | — |
 | An Estia account with access to WorkTimePro | the MCP server | — |
-| Python 3 with `langfuse>=4.0,<5` | only Langfuse tracing | `python -c "import langfuse"` |
+| Python 3 with `langfuse>=4.0,<5` | only Langfuse tracing (off by default) | `python -c "import langfuse"` |
 
 ## Steps
 
@@ -35,18 +35,19 @@ If Chrome is not in a standard folder, set `CHROME_PATH` to the path of `chrome.
 
 ## Langfuse tracing
 
+Tracing is off by default. It is on only when the file `.claude/langfuse-state/on` exists.
+
 1. Install the package: `pip install "langfuse>=4.0,<5"`.
-2. In `.claude/settings.local.json`, set `TRACE_TO_LANGFUSE` to `"true"` and add the keys of your Langfuse project (Settings > API Keys).
-3. Start a new Claude Code session.
+2. In `.claude/settings.local.json`, add the keys of your Langfuse project (Settings > API Keys). Then start a new Claude Code session.
+3. Make the `on` file. Remove it to stop tracing. No restart is necessary:
+   ```
+   New-Item -Force .claude/langfuse-state/on   # on
+   Remove-Item .claude/langfuse-state/on       # off
+   ```
+
+Only the turns that start after you make the `on` file are sent. The turns from before are never sent.
 
 The hook `.claude/hooks/langfuse-hook.mjs` finds Python (`python3`, `python` or `py -3`). If it uses an incorrect Python, set `LANGFUSE_PYTHON` to the path of `python.exe`.
-
-To stop tracing with no restart, make the file `.claude/langfuse-state/off`. Remove it to start again:
-
-```
-New-Item .claude/langfuse-state/off      # off
-Remove-Item .claude/langfuse-state/off   # on
-```
 
 ## Monthly script
 

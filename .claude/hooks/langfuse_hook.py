@@ -5,9 +5,9 @@ Claude Code -> Langfuse hook
 Source: https://langfuse.com/integrations/developer-tools/claude-code (needs langfuse>=4.0,<5).
 Registered as a Stop hook in .claude/settings.json of this repository only, through langfuse-hook.mjs
 (the launcher finds a Python with the langfuse package: python3, python or py -3).
-Tracing is on only when TRACE_TO_LANGFUSE="true" (set in .claude/settings.local.json with the keys).
-To stop tracing with no restart, make the file .claude/langfuse-state/off. Remove it to start again.
-The turns made while this file exists are skipped: they are not sent later.
+Tracing is off by default. It is on only when the file .claude/langfuse-state/on exists, and the
+keys are set (in .claude/settings.local.json). No restart is necessary to make or remove the file.
+Only the turns that start after the file was made are sent. The earlier turns are skipped.
 """
 
 import json
@@ -37,8 +37,8 @@ STATE_DIR = Path(__file__).resolve().parent.parent / "langfuse-state"
 LOG_FILE = STATE_DIR / "langfuse_hook.log"
 STATE_FILE = STATE_DIR / "langfuse_state.json"
 LOCK_FILE = STATE_DIR / "langfuse_state.lock"
-# When this file exists, tracing is paused. Read at each Stop, so no restart is necessary.
-OFF_FILE = STATE_DIR / "off"
+# Tracing is on only when this file exists. Read at each Stop, so no restart is necessary.
+ON_FILE = STATE_DIR / "on"
 
 DEBUG = os.environ.get("CC_LANGFUSE_DEBUG", "").lower() == "true"
 try:
@@ -697,8 +697,10 @@ def main() -> int:
     start = time.time()
     debug("Hook started")
 
-    if os.environ.get("TRACE_TO_LANGFUSE", "") != "true":
-        return 0
+    try:
+        on_since = datetime.fromtimestamp(ON_FILE.stat().st_mtime, tz=timezone.utc)
+    except OSError:
+        return 0  # Off by default: no "on" file.
 
     public_key = os.environ.get("CC_LANGFUSE_PUBLIC_KEY") or os.environ.get("LANGFUSE_PUBLIC_KEY")
     secret_key = os.environ.get("CC_LANGFUSE_SECRET_KEY") or os.environ.get("LANGFUSE_SECRET_KEY")
@@ -719,21 +721,6 @@ def main() -> int:
         debug(f"Transcript path does not exist: {transcript_path}")
         return 0
 
-    if OFF_FILE.exists():
-        # Paused: move the offset past the new turns, so that they are not sent when tracing starts again.
-        try:
-            with FileLock(LOCK_FILE):
-                state = load_state()
-                key = state_key(session_id, str(transcript_path))
-                ss = load_session_state(state, key)
-                _, ss = read_new_jsonl(transcript_path, ss)
-                write_session_state(state, key, ss)
-                save_state(state)
-            debug(f"Tracing paused ({OFF_FILE} exists); skipped new turns")
-        except Exception as e:
-            debug(f"Pause skip failed: {e}")
-        return 0
-
     langfuse = None
     try:
         langfuse = Langfuse(public_key=public_key, secret_key=secret_key, host=host)
@@ -752,7 +739,12 @@ def main() -> int:
                 save_state(state)
                 return 0
 
-            turns = build_turns(msgs)
+            # Send only the turns that started after the "on" file was made. The earlier turns
+            # (tracing off) are read and skipped, so they are never sent.
+            all_turns = build_turns(msgs)
+            turns = [t for t in all_turns if (parse_ts(t.user_msg) or on_since) > on_since]
+            if len(turns) < len(all_turns):
+                debug(f"Skipped {len(all_turns) - len(turns)} turns from before {on_since.isoformat()}")
             if not turns:
                 write_session_state(state, key, ss)
                 save_state(state)
