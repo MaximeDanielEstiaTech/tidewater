@@ -3,3 +3,5 @@ tidewater-mcp/explore/out/
 .claude/settings.local.json
 */issue/*
 !*/issue/.gitkeep
+.env
+.claude/langfuse-state/
